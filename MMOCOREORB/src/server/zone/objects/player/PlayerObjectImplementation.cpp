@@ -63,7 +63,6 @@
 #include "server/zone/managers/jedi/JediManager.h"
 #include "server/zone/objects/player/events/ForceRegenerationEvent.h"
 #include "server/login/account/AccountManager.h"
-#include "templates/creature/SharedCreatureObjectTemplate.h"
 
 #include "server/zone/objects/tangible/deed/eventperk/EventPerkDeed.h"
 #include "server/zone/managers/player/QuestInfo.h"
@@ -321,19 +320,20 @@ void PlayerObjectImplementation::unload() {
 }
 
 int PlayerObjectImplementation::calculateBhReward() {
-	int minReward = 25000; // Minimum reward for a player bounty
+	int minReward = 60000; // Minimum reward for a player bounty
+	int maxReward = 1000000; // Maximum reward for a player bounty
 
 	if (getJediState() >= 4) // Minimum if player is knight
 		minReward = 50000;
 
 	int skillPoints = getSpentJediSkillPoints();
-	int reward = skillPoints * 1000;
+	ManagedReference<CreatureObject*> creature = dynamic_cast<CreatureObject*>(parent.get().get());
 
-	int frsRank = getFrsData()->getRank();
-
-	if (frsRank > 0)
-		reward += frsRank * 100000; // +100k per frs rank
-
+	int reward = skillPoints * 2000;
+	if (creature->getScreenPlayState("deathBounty") > 0){
+		int playerBounty = 100000 + (creature->getScreenPlayState("deathBounty") * 100000);
+		reward += playerBounty;
+	}
 	if (reward < minReward)
 		reward = minReward;
 
@@ -1364,26 +1364,17 @@ void PlayerObjectImplementation::notifyOnline() {
 
 	playerCreature->notifyObservers(ObserverEventType::LOGGEDIN);
 
-	// Set speed if player isn't mounted.
-	if (!playerCreature->isRidingMount())
-	{
-		auto playerTemplate = dynamic_cast<SharedCreatureObjectTemplate*>(playerCreature->getObjectTemplate());
-
-		if (playerTemplate != nullptr) {
-			auto speedTempl = playerTemplate->getSpeed();
-
-			playerCreature->setRunSpeed(speedTempl.get(0));
-		}
-	}
-
 	if (getForcePowerMax() > 0 && getForcePower() < getForcePowerMax())
 		activateForcePowerRegen();
 
 	schedulePvpTefRemovalTask();
 
+	playerCreature->sendExecuteConsoleCommand("/chatRoom join SWG.aftermath.General");
+	playerCreature->sendExecuteConsoleCommand("/chatRoom join SWG.aftermath.PvP");
+
 	MissionManager* missionManager = zoneServer->getMissionManager();
 
-	if (missionManager != nullptr && playerCreature->hasSkill("force_title_jedi_rank_02")) {
+	if (missionManager != nullptr && (playerCreature->hasSkill("force_title_jedi_rank_02") || playerCreature->hasSkill("combat_bountyhunter_investigation_03"))) {
 		uint64 id = playerCreature->getObjectID();
 
 		if (!missionManager->hasPlayerBountyTargetInList(id))
@@ -1391,9 +1382,30 @@ void PlayerObjectImplementation::notifyOnline() {
 		else {
 			missionManager->updatePlayerBountyReward(id, calculateBhReward());
 			missionManager->updatePlayerBountyOnlineStatus(id, true);
+			missionManager->updatePlayerBountyReward(id, calculateBhReward());
 		}
 	}
 
+	//Remove FR2 from Jedi
+	ManagedReference<PlayerObject*> ghost = playerCreature->getPlayerObject();
+	if (ghost != NULL && playerCreature->hasSkill("force_title_jedi_rank_02") && ghost->hasAbility("forceRun2") && !(playerCreature->hasSkill("frs_post9_light_enhancer_04") || playerCreature->hasSkill("frs_post9_dark_enhancer_04"))){
+		SkillManager::instance()->removeAbility(ghost, "forceRun2", true);
+	}
+
+	//Remove TotalhealSelf from non-frs Jedi
+	if (ghost != NULL && playerCreature->hasSkill("force_title_jedi_rank_02") && ghost->hasAbility("totalHealSelf") && !(playerCreature->hasSkill("frs_post9_light_healing_04") || playerCreature->hasSkill("frs_post9_dark_healing_04"))){
+		SkillManager::instance()->removeAbility(ghost, "totalHealSelf", true);
+	}
+
+	//Remove TotalhealSelf from non-frs Jedi
+	if (ghost != NULL && playerCreature->hasSkill("force_title_jedi_rank_02") && ghost->hasAbility("totalHealOther") && !(playerCreature->hasSkill("frs_post9_light_healing_04") || playerCreature->hasSkill("frs_post9_dark_healing_04"))){
+		SkillManager::instance()->removeAbility(ghost, "totalHealOther", true);
+	}
+
+	if (ghost != NULL && ghost->getRatingReset() != 1){
+		ghost->setPvpRating(1200);
+		ghost->setRatingReset(1);
+	}
 	playerCreature->schedulePersonalEnemyFlagTasks();
 }
 
@@ -1436,7 +1448,7 @@ void PlayerObjectImplementation::notifyOffline() {
 
 	MissionManager* missionManager = getZoneServer()->getMissionManager();
 
-	if (missionManager != nullptr && playerCreature->hasSkill("force_title_jedi_rank_02")) {
+	if (missionManager != nullptr && (playerCreature->hasSkill("force_title_jedi_rank_02") || playerCreature->hasSkill("combat_bountyhunter_investigation_03"))) {
 		missionManager->updatePlayerBountyOnlineStatus(playerCreature->getObjectID(), false);
 	}
 
@@ -2068,7 +2080,7 @@ void PlayerObjectImplementation::activateForcePowerRegen() {
 
 		float timer = regen / 5.f;
 
-		float scheduledTime = 10 / timer;
+		float scheduledTime = 5 / timer;
 		uint64 miliTime = static_cast<uint64>(scheduledTime * 1000.f);
 		forceRegenerationEvent->schedule(miliTime);
 	}
@@ -2331,22 +2343,25 @@ Time PlayerObjectImplementation::getLastGcwPvpCombatActionTimestamp() const {
 	return lastGcwPvpCombatActionTimestamp;
 }
 
-Time PlayerObjectImplementation::getLastGcwCrackdownCombatActionTimestamp() const {
-	return lastCrackdownGcwCombatActionTimestamp;
+Time PlayerObjectImplementation::getLastJediPvpCombatActionTimestamp() {
+	return lastJediPvpCombatActionTimestamp;
+}
+Time PlayerObjectImplementation::getLastJediAttackableTimestamp() {
+	return lastJediAttackableTimestamp;
 }
 
-void PlayerObjectImplementation::updateLastCombatActionTimestamp(bool updateGcwCrackdownAction, bool updateGcwAction, bool updateBhAction) {
+void PlayerObjectImplementation::updateLastJediAttackableTimestamp() {
+	lastJediAttackableTimestamp.updateToCurrentTime();
+	lastJediAttackableTimestamp.addMiliTime(60000);
+}
+
+void PlayerObjectImplementation::updateLastPvpCombatActionTimestamp(bool updateGcwAction, bool updateBhAction, bool updateJediAction) {
 	ManagedReference<CreatureObject*> parent = getParent().get().castTo<CreatureObject*>();
 
 	if (parent == nullptr)
 		return;
 
-	bool alreadyHasTef = hasTef();
-
-	if (updateGcwCrackdownAction) {
-		lastCrackdownGcwCombatActionTimestamp.updateToCurrentTime();
-		lastCrackdownGcwCombatActionTimestamp.addMiliTime(FactionManager::TEFTIMER);
-	}
+	bool alreadyHasTef = hasPvpTef();
 
 	if (updateBhAction) {
 		bool alreadyHasBhTef = hasBhTef();
@@ -2362,6 +2377,12 @@ void PlayerObjectImplementation::updateLastCombatActionTimestamp(bool updateGcwC
 		lastGcwPvpCombatActionTimestamp.addMiliTime(FactionManager::TEFTIMER);
 	}
 
+	if (updateJediAction){
+		lastJediPvpCombatActionTimestamp.updateToCurrentTime();
+		lastJediPvpCombatActionTimestamp.addMiliTime(FactionManager::TEFTIMER);
+		info("Updating Jedi TEF");
+	}
+
 	schedulePvpTefRemovalTask();
 
 	if (!alreadyHasTef) {
@@ -2371,64 +2392,54 @@ void PlayerObjectImplementation::updateLastCombatActionTimestamp(bool updateGcwC
 }
 
 void PlayerObjectImplementation::updateLastBhPvpCombatActionTimestamp() {
-	updateLastCombatActionTimestamp(false, false, true);
+	updateLastPvpCombatActionTimestamp(false, true, false);
 }
 
 void PlayerObjectImplementation::updateLastGcwPvpCombatActionTimestamp() {
-	updateLastCombatActionTimestamp(false, true, false);
+	updateLastPvpCombatActionTimestamp(true, false, false);
 }
 
-bool PlayerObjectImplementation::hasTef() const {
-	return hasCrackdownTef() || hasPvpTef();
+void PlayerObjectImplementation::updateLastJediPvpCombatActionTimestamp() {
+	updateLastPvpCombatActionTimestamp(false, false, true);
 }
 
-bool PlayerObjectImplementation::hasPvpTef() const {
-	return !lastGcwPvpCombatActionTimestamp.isPast() || hasBhTef();
+bool PlayerObjectImplementation::hasPvpTef() const{
+	return !lastGcwPvpCombatActionTimestamp.isPast() || hasBhTef() || hasJediTef();
 }
 
 bool PlayerObjectImplementation::hasBhTef() const {
 	return !lastBhPvpCombatActionTimestamp.isPast();
 }
 
-void PlayerObjectImplementation::setCrackdownTefTowards(unsigned int factionCrc, bool scheduleTefRemovalTask) {
-	crackdownFactionTefCrc = factionCrc;
-	if (scheduleTefRemovalTask) {
-		updateLastCombatActionTimestamp(true, false, false);
-	}
+bool PlayerObjectImplementation::hasJediTef() const {
+	return !lastJediPvpCombatActionTimestamp.isPast();
+}
+bool PlayerObjectImplementation::isJediAttackable() {
+	return !lastJediAttackableTimestamp.isPast();
 }
 
-bool PlayerObjectImplementation::hasCrackdownTefTowards(unsigned int factionCrc) const {
-	return !lastCrackdownGcwCombatActionTimestamp.isPast() && factionCrc != 0 && crackdownFactionTefCrc == factionCrc;
-}
-
-bool PlayerObjectImplementation::hasCrackdownTef() const {
-	return !lastCrackdownGcwCombatActionTimestamp.isPast() && crackdownFactionTefCrc != 0;
-}
-
-void PlayerObjectImplementation::schedulePvpTefRemovalTask(bool removeCrackdownGcwTefNow, bool removeGcwTefNow, bool removeBhTefNow) {
+void PlayerObjectImplementation::schedulePvpTefRemovalTask(bool removeGcwTefNow, bool removeBhTefNow, bool removeJediTefNow) {
 	ManagedReference<CreatureObject*> parent = getParent().get().castTo<CreatureObject*>();
 
-	if (parent == nullptr) {
+	if (parent == nullptr)
 		return;
-	}
 
 	if (pvpTefTask == nullptr) {
 		pvpTefTask = new PvpTefRemovalTask(parent);
 	}
 
-	if (removeCrackdownGcwTefNow || removeGcwTefNow || removeBhTefNow) {
-		if (removeCrackdownGcwTefNow) {
-			crackdownFactionTefCrc = 0;
-			lastCrackdownGcwCombatActionTimestamp.updateToCurrentTime();
-		}
-
-		if (removeGcwTefNow) {
+	if (removeGcwTefNow || removeBhTefNow || removeJediTefNow) {
+		if (removeGcwTefNow)
 			lastGcwPvpCombatActionTimestamp.updateToCurrentTime();
-		}
 
 		if (removeBhTefNow) {
 			lastBhPvpCombatActionTimestamp.updateToCurrentTime();
 			parent->notifyObservers(ObserverEventType::BHTEFCHANGED);
+		}
+
+		if (removeJediTefNow){
+			lastJediPvpCombatActionTimestamp.updateToCurrentTime();
+			lastJediAttackableTimestamp.updateToCurrentTime();
 		}
 
 		if (pvpTefTask->isScheduled()) {
@@ -2437,13 +2448,13 @@ void PlayerObjectImplementation::schedulePvpTefRemovalTask(bool removeCrackdownG
 	}
 
 	if (!pvpTefTask->isScheduled()) {
-		if (hasTef()) {
-			auto gcwCrackdownTefMs = getLastGcwCrackdownCombatActionTimestamp().miliDifference();
+		info("No Tef Scheduled, adding one");
+		if (hasPvpTef()) {
 			auto gcwTefMs = getLastGcwPvpCombatActionTimestamp().miliDifference();
 			auto bhTefMs = getLastBhPvpCombatActionTimestamp().miliDifference();
-			auto scheduleTime = gcwTefMs < bhTefMs ? gcwTefMs : bhTefMs;
-			scheduleTime = gcwCrackdownTefMs < scheduleTime ? gcwCrackdownTefMs : scheduleTime;
-			pvpTefTask->schedule(llabs(scheduleTime));
+			auto jediTefMs = getLastJediPvpCombatActionTimestamp().miliDifference();
+	
+			pvpTefTask->schedule(llabs(jediTefMs < gcwTefMs ? (jediTefMs < bhTefMs ? jediTefMs : bhTefMs) : (gcwTefMs < bhTefMs ? gcwTefMs : bhTefMs)));
 		} else {
 			pvpTefTask->execute();
 		}
@@ -2540,6 +2551,14 @@ void PlayerObjectImplementation::destroyObjectFromDatabase(bool destroyContained
 		ManagedReference<StructureObject*> structure = getZoneServer()->getObject(oid).castTo<StructureObject*>();
 
 		if (structure != nullptr) {
+			//This shouldn't happen but it did. Lets make sure it doesn't ever again.
+			ManagedReference<CreatureObject*> player = getParent().get().castTo<CreatureObject*>();
+
+			if (player != nullptr && player->getObjectID() != structure->getOwnerObjectID()) {
+				error("Tried deleting a structure that does not belong to the player in PlayerObjectImplementation::destroyObjectFromDatabase. Skipping structure.");
+				continue;
+			}
+
 			Zone* zone = structure->getZone();
 
 			if (zone != nullptr) {
@@ -2562,7 +2581,7 @@ void PlayerObjectImplementation::destroyObjectFromDatabase(bool destroyContained
 					continue;
 				}
 
-				StructureManager::instance()->destroyStructure(structure);
+				StructureManager::instance()->destroyStructure(structure, false, "the owners character was deleted.");
 			} else {
 				structure->destroyObjectFromDatabase(true);
 			}
@@ -2677,8 +2696,16 @@ int PlayerObjectImplementation::getSpentJediSkillPoints() {
 	for(int i = 0; i < skillList->size(); ++i) {
 		const Skill* jediSkill = skillList->get(i);
 
-		if (jediSkill->getSkillName().indexOf("force_discipline") != -1)
-			jediSkillPoints += jediSkill->getSkillPointsRequired();
+		if (jediSkill->getSkillName().indexOf("jedi") != -1){
+			if (jediSkill->getSkillName().indexOf("_padawan_") != -1){
+				jediSkillPoints += 4;
+			}else if (jediSkill->getSkillName().indexOf("_journeyman_") != -1) {
+				jediSkillPoints += 6;
+			}else if (jediSkill->getSkillName().indexOf("_master_") != -1){
+				jediSkillPoints += 7;
+			}
+		}
+
 	}
 
 	return jediSkillPoints;

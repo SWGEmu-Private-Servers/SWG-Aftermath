@@ -13,6 +13,7 @@
 #include "server/zone/packets/tangible/TangibleObjectDeltaMessage3.h"
 #include "server/zone/packets/tangible/TangibleObjectDeltaMessage6.h"
 #include "server/zone/packets/scene/AttributeListMessage.h"
+#include "server/zone/managers/objectcontroller/ObjectController.h"
 #include "templates/SharedTangibleObjectTemplate.h"
 #include "templates/params/creature/CreatureFlag.h"
 #include "server/zone/packets/tangible/UpdatePVPStatusMessage.h"
@@ -95,47 +96,12 @@ void TangibleObjectImplementation::notifyLoadFromDatabase() {
 	if (hasAntiDecayKit()) {
 		AntiDecayKit* adk = antiDecayKitObject.castTo<AntiDecayKit*>();
 
-		if (adk != nullptr) {
-			if (!adk->isUsed()) {
-				Locker locker(adk);
-				adk->setUsed(true);
-			}
+		if (adk != nullptr && !adk->isUsed()) {
+			Locker locker(adk);
 
-			auto strongAdkParent = adk->getParent().get();
-
-			if (strongAdkParent != nullptr) {
-				error()
-					<< "oid: " << getObjectID()
-					<< " has AntiDecayKit(" << adk->getObjectID()
-					<< ") with parent: " << strongAdkParent->getObjectID()
-					<< ", removing from world."
-					;
-				Locker lock(adk);
-				adk->destroyObjectFromWorld(true);
-			}
+			adk->setUsed(true);
 		}
 	}
-}
-
-void TangibleObjectImplementation::destroyObjectFromDatabase(bool destroyContainedObjects) {
-	if (hasAntiDecayKit()) {
-		AntiDecayKit* adk = antiDecayKitObject.castTo<AntiDecayKit*>();
-
-		if (adk != nullptr) {
-			auto strongAdkParent = adk->getParent().get();
-			error()
-				<< "destroyObjectFromDatabase oid: " << getObjectID()
-				<< " has AntiDecayKit(" << adk->getObjectID()
-				<< ") with parent: " << (strongAdkParent != nullptr ? strongAdkParent->getObjectID() : 0)
-				<< ", removing adk from database."
-				;
-			Locker lock(adk);
-			adk->destroyObjectFromDatabase(true);
-			antiDecayKitObject = nullptr;
-		}
-	}
-
-	SceneObjectImplementation::destroyObjectFromDatabase(destroyContainedObjects);
 }
 
 void TangibleObjectImplementation::sendBaselinesTo(SceneObject* player) {
@@ -543,16 +509,6 @@ void TangibleObjectImplementation::fillAttributeList(AttributeListMessage* alm, 
 		StringBuffer cond;
 		cond << (maxCondition-(int)conditionDamage) << "/" << maxCondition;
 
-		auto config = ConfigManager::instance();
-
-		if (isForceNoTrade()) {
-			cond << config->getForceNoTradeMessage();
-		} else if (antiDecayKitObject != nullptr && antiDecayKitObject->isForceNoTrade()) {
-			cond << config->getForceNoTradeADKMessage();
-		} else if (isNoTrade() || containsNoTradeObjectRecursive()) {
-			cond << config->getNoTradeMessage();
-		}
-
 		alm->insertAttribute("condition", cond);
 	}
 
@@ -701,6 +657,21 @@ int TangibleObjectImplementation::inflictDamage(TangibleObject* attacker, int da
 		notifyObjectDestructionObservers(attacker, newConditionDamage, isCombatAction);
 		notifyObservers(ObserverEventType::OBJECTDISABLED, attacker);
 		setDisabled(true);
+
+		WearableObject* wearable = cast<WearableObject*>(asTangibleObject());
+			if(wearable != NULL) {
+				ManagedReference<SceneObject*> playerParent = getParentRecursively(SceneObjectType::PLAYERCREATURE);
+				if (wearable->isEquipped() && playerParent != NULL){
+					SceneObject* inventory = playerParent->getSlottedObject("inventory");
+					SceneObject* parentOfWearableParent = wearable->getParent().get();
+					ZoneServer* zoneServer = server->getZoneServer();
+					ObjectController* objectController = zoneServer->getObjectController();
+					if (objectController != NULL && inventory != NULL && parentOfWearableParent != NULL){
+						objectController->transferObject(wearable,inventory,wearable->getContainmentType(), true, true);
+					}
+				}
+					
+			}
 	}
 
 	return 0;
@@ -1100,22 +1071,19 @@ bool TangibleObjectImplementation::isAttackableBy(TangibleObject* object) {
 }
 
 bool TangibleObjectImplementation::isAttackableBy(CreatureObject* object) {
-	if (object->isPlayerCreature()) {
-		Reference<PlayerObject*> ghost = object->getPlayerObject();
-		if (ghost != nullptr && ghost->hasCrackdownTefTowards(getFaction())) {
-			return true;
-		}
-		if (isImperial() && (!object->isRebel() || object->getFactionStatus() == 0)) {
-			return false;
-		}
-
-		if (isRebel() && (!object->isImperial() || object->getFactionStatus() == 0)) {
-			return false;
-		}
-	} else if (isImperial() && !(object->isRebel())) {
+	if (isImperial() && !(object->isRebel())) {
 		return false;
 	} else if (isRebel() && !(object->isImperial())) {
 		return false;
+	} else if (object->isPlayerCreature()) {
+		if (isImperial() && object->getFactionStatus() == 0) {
+			return false;
+		}
+
+		if (isRebel() && object->getFactionStatus() == 0) {
+			return false;
+		}
+
 	} else if (object->isAiAgent()) {
 		AiAgent* ai = object->asAiAgent();
 

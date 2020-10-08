@@ -45,9 +45,8 @@ void FishObjectImplementation::fillObjectMenuResponse(ObjectMenuResponse* menuRe
 		}
 
 		SceneObject* inventory = player->getSlottedObject("inventory");
-		SceneObject* thisParent = getParent().get();
 
-		if (inventory != nullptr && thisParent != nullptr && thisParent == inventory)
+		if (inventory != nullptr && parent == inventory)
 		{
 			menuResponse->addRadialMenuItem(245, 3, text);
 		}

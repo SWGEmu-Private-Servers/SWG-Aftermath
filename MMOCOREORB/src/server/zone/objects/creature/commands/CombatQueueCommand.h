@@ -25,6 +25,7 @@
 #include "server/zone/packets/object/CombatSpam.h"
 #include "QueueCommand.h"
 #include "server/zone/objects/player/FactionStatus.h"
+#include "server/zone/managers/visibility/VisibilityManager.h"
 
 class CombatQueueCommand : public QueueCommand {
 protected:
@@ -183,8 +184,12 @@ public:
 					return GENERALERROR;
 
 				ManagedReference<TangibleObject*> targetTano = targetObject.castTo<TangibleObject*>();
+				//Comment out field faction change
+				/*if (targetTano != NULL && creature->getFaction() != 0 && targetTano->getFaction() != 0 && targetTano->getFaction() != creature->getFaction() && creature->getFactionStatus() != FactionStatus::OVERT) {
+=======
 
 				if (targetTano != nullptr && creature->getFaction() != 0 && targetTano->getFaction() != 0 && targetTano->getFaction() != creature->getFaction() && creature->getFactionStatus() != FactionStatus::OVERT) {
+>>>>>>> unstable
 					if (targetTano->isCreatureObject()) {
 						ManagedReference<CreatureObject*> targetCreature = targetObject.castTo<CreatureObject*>();
 
@@ -209,7 +214,7 @@ public:
 						else if ((targetTano->getPvpStatusBitmask() & CreatureFlag::OVERT))
 							ghost->doFieldFactionChange(FactionStatus::OVERT);
 					}
-				}
+				}*/
 			}
 		}
 
@@ -281,6 +286,21 @@ public:
 		// only clear aiming states if command was successful
 		creature->removeStateBuff(CreatureState::AIMING);
 		creature->removeBuff(STRING_HASHCODE("steadyaim"));
+
+		//Give visibility on auto-attacks
+		if (creature->isPlayerCreature()){
+			PlayerObject* visGhost = creature->getPlayerObject().get();
+			if (visGhost->isJedi()){
+				WeaponObject* visWeap = creature->getWeapon();
+				if (visWeap->isJediWeapon()){
+					VisibilityManager::instance()->increaseVisibility(creature, 25);
+					//Jedi Attackable
+					visGhost->updateLastJediAttackableTimestamp();
+				}
+
+			}
+		}
+
 
 		return SUCCESS;
 	}

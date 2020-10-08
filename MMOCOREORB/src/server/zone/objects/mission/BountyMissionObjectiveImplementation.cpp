@@ -23,6 +23,10 @@
 #include "server/zone/objects/mission/bountyhunter/events/BountyHunterTargetTask.h"
 #include "server/zone/managers/visibility/VisibilityManager.h"
 
+#include "server/zone/objects/player/sui/messagebox/SuiMessageBox.h"
+#include "server/zone/objects/player/sui/callbacks/BountyHuntSuiCallback.h"
+#include "server/zone/objects/player/sui/inputbox/SuiInputBox.h"
+
 void BountyMissionObjectiveImplementation::setNpcTemplateToSpawn(SharedObjectTemplate* sp) {
 	npcTemplateToSpawn = sp;
 }
@@ -577,19 +581,23 @@ void BountyMissionObjectiveImplementation::handlePlayerKilled(ManagedObject* arg
 
 	if(mission == nullptr)
 		return;
-
 	if (owner != nullptr && killer != nullptr && !completedMission) {
+		String playerName = killer->getFirstName();
+		String bhName = owner->getFirstName();
+		String winner;
 		if (owner->getObjectID() == killer->getObjectID()) {
 			//Target killed by player, complete mission.
 			ZoneServer* zoneServer = owner->getZoneServer();
 			if (zoneServer != nullptr) {
 				ManagedReference<CreatureObject*> target = zoneServer->getObject(mission->getTargetObjectId()).castTo<CreatureObject*>();
 				if (target != nullptr) {
-					int minXpLoss = -50000;
-					int maxXpLoss = -500000;
+					int minXpLoss = -120000;
+					int maxXpLoss = -1000000;
 
 					VisibilityManager::instance()->clearVisibility(target);
-					int xpLoss = mission->getRewardCredits() * -2;
+					target->setScreenPlayState("deathBounty", 0);
+					int xpLoss = mission->getRewardCredits() * -2.5;
+					StringBuffer bBroadcast;
 
 					if (xpLoss > minXpLoss)
 						xpLoss = minXpLoss;
@@ -597,10 +605,29 @@ void BountyMissionObjectiveImplementation::handlePlayerKilled(ManagedObject* arg
 						xpLoss = maxXpLoss;
 
 					owner->getZoneServer()->getPlayerManager()->awardExperience(target, "jedi_general", xpLoss, true);
+					String victimName = target->getFirstName();
+					bBroadcast << "\\#00bfff" << bhName << "\\#ffd700" << " a" << "\\#ff7f00 Bounty Hunter" << "\\#ffd700 has collected the bounty on\\#00bfff " << victimName;
+					owner->getZoneServer()->getChatManager()->broadcastGalaxy(NULL, bBroadcast.toString());
+					winner = "BH";
 					StringIdChatParameter message("base_player","prose_revoke_xp");
 					message.setDI(xpLoss * -1);
 					message.setTO("exp_n", "jedi_general");
 					target->sendSystemMessage(message);
+					StringBuffer bhKillQuery;
+					Database::escapeString(bhName);
+					Database::escapeString(victimName);
+					bhKillQuery << "INSERT INTO bh_kills(bh, opponent, reward, winner) VALUES ('" << bhName <<"','" << victimName << "'," << mission->getRewardCredits() << ", '" << winner << "');";
+					ServerDatabase::instance()->executeStatement(bhKillQuery);
+					TangibleObject* attacker = owner->asTangibleObject();
+					ManagedReference<SuiMessageBox*> box = new SuiMessageBox(target, SuiWindowType::CITY_ADMIN_CONFIRM_UPDATE_TYPE);
+					box->setPromptTitle("You have been slain...");
+					box->setPromptText("Would you like to pay 50,000 credits to place a bounty on your killers head?");
+					box->setCancelButton(true, "@no");
+					box->setOkButton(true, "@yes");
+					box->setUsingObject(attacker);
+					box->setCallback(new BountyHuntSuiCallback(target->getZoneServer()));
+					target->getPlayerObject()->addSuiBox(box);
+					target->sendMessage(box->generateMessage());
 				}
 			}
 
@@ -609,7 +636,16 @@ void BountyMissionObjectiveImplementation::handlePlayerKilled(ManagedObject* arg
 				(npcTarget != nullptr && npcTarget->getObjectID() == killer->getObjectID())) {
 
 			owner->sendSystemMessage("@mission/mission_generic:failed"); // Mission failed
-			killer->sendSystemMessage("You have defeated a bounty hunter, ruining his mission against you!");
+			killer->sendSystemMessage("You have defeated a bounty hunter, ruining their mission against you!");
+			winner = "BH Target";
+			StringBuffer zBroadcast;
+			zBroadcast << "\\#00bfff" << playerName << "\\#ffd700" << "\\#ffd700 has defeated\\#00bfff " << bhName << "\\#ffd700 a" << "\\#ff7f00 Bounty Hunter";
+			killer->getZoneServer()->getChatManager()->broadcastGalaxy(NULL, zBroadcast.toString());
+			StringBuffer bhKillQuery;
+			Database::escapeString(bhName);
+			Database::escapeString(playerName);
+			bhKillQuery << "INSERT INTO bh_kills(bh, opponent, reward, winner) VALUES ('" << bhName <<"','" << playerName << "'," << mission->getRewardCredits() << ", '" << winner << "');";
+			ServerDatabase::instance()->executeStatement(bhKillQuery);
 			fail();
 		}
 	}

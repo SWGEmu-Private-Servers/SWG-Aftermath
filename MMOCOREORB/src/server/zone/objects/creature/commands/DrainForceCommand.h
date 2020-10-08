@@ -66,12 +66,15 @@ public:
 			if (forceSpace <= 0) //Cannot Force Drain if attacker can't hold any more Force.
 				return GENERALERROR;
 
-			if (playerGhost->getForcePower() < forceCost) {
-				creature->sendSystemMessage("@jedi_spam:no_force_power"); //You do not have sufficient Force power to perform that action.
-				return GENERALERROR;
+			int maxDrain = minDamage; //Value set in command lua.
+			int forceEnh = 0;
+			if(playerGhost->getJediState() == 4) {
+				forceEnh = creature->getSkillMod("force_enhancement_light");
+			} else if (playerGhost->getJediState() == 8) {
+				forceEnh = creature->getSkillMod("force_enhancement_dark");
 			}
 
-			int drain = System::random(maxDamage);
+			maxDrain = maxDrain + (forceEnh * 7.5);
 
 			int targetForce = targetGhost->getForcePower();
 			if (targetForce <= 0) {
@@ -79,7 +82,7 @@ public:
 				return GENERALERROR;
 			}
 
-			int forceDrain = targetForce >= drain ? drain : targetForce; //Drain whatever Force the target has, up to max.
+			int forceDrain = targetForce >= maxDrain ? maxDrain : targetForce; //Drain whatever Force the target has, up to max.
 			if (forceDrain > forceSpace)
 				forceDrain = forceSpace; //Drain only what attacker can hold in their own Force pool.
 

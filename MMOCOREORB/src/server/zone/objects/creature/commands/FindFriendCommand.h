@@ -51,8 +51,9 @@ public:
 
 		PlayerObject* targetGhost = targetPlayer->getPlayerObject();
 		String myFirstName = player->getFirstName().toLowerCase();
+		String tarFirstName = targetPlayer->getFirstName().toLowerCase();
 
-		if (!targetGhost->hasFriend(myFirstName)) {
+		if (!targetGhost->hasFriend(myFirstName) || !ghost->hasFriend(tarFirstName)) {
 			StringIdChatParameter message("@ui_cmnty:friend_location_failed"); // Unable to locate %TU
 			message.setTU(name);
 

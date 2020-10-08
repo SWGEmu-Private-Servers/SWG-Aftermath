@@ -348,8 +348,10 @@ void WeaponObjectImplementation::fillAttributeList(AttributeListMessage* alm, Cr
 	}
 
 	// Force Cost
-	if (getForceCost() > 0)
-		alm->insertAttribute("forcecost", (int)getForceCost());
+	if (getForceCost() > 0){
+		float roundedForceCost = floor((float)getForceCost()*100 + 0.5)/100;
+		alm->insertAttribute("forcecost", roundedForceCost);
+	}
 
 	for (int i = 0; i < getNumberOfDots(); i++) {
 
@@ -499,8 +501,8 @@ float WeaponObjectImplementation::getAttackSpeed(bool withPup) const {
 
 	float calcSpeed = speed + getConditionReduction(speed);
 
-	if (calcSpeed < 0.1f)
-		calcSpeed = 0.1f;
+	if (calcSpeed < 0.1)
+		calcSpeed = 0.1;
 
 	return calcSpeed;
 }
@@ -719,7 +721,7 @@ void WeaponObjectImplementation::decay(CreatureObject* user) {
 	int chance = 5;
 
 	if (hasPowerup())
-		chance += 10;
+		chance += 3;
 
 	if (roll < chance) {
 		Locker locker(_this.getReferenceUnsafeStaticCast());

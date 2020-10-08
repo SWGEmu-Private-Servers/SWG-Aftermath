@@ -5,8 +5,6 @@
  *      Author: theanswer
  */
 
-#include "server/zone/objects/creature/CreatureObject.h"
-
 #include "server/zone/objects/mission/MissionObject.h"
 #include "server/zone/objects/mission/MissionObjective.h"
 #include "server/zone/packets/mission/MissionObjectMessage6.h"
@@ -14,6 +12,7 @@
 #include "server/zone/packets/mission/MissionObjectDeltaMessage3.h"
 #include "server/zone/ZoneServer.h"
 #include "server/zone/objects/group/GroupObject.h"
+
 
 void MissionObjectImplementation::initializeTransientMembers() {
 	SceneObjectImplementation::initializeTransientMembers();
@@ -161,13 +160,6 @@ void MissionObjectImplementation::setRewardCredits(int creds, bool notifyClient)
 	ManagedReference<CreatureObject*> player = getParentRecursively(SceneObjectType::PLAYERCREATURE).castTo<CreatureObject*>();
 
 	if (player != nullptr) {
-		if (player->isGrouped()) {
-			Reference<GroupObject*> group = player->getGroup();
-
-			rewardCreditsDivisor = group->getNumberOfPlayerMembers();
-		} else {
-			rewardCreditsDivisor = 1;
-		}
 
 		MissionObjectDeltaMessage3* delta = new MissionObjectDeltaMessage3(_this.getReferenceUnsafeStaticCast());
 		delta->updateRewardCredits(creds);

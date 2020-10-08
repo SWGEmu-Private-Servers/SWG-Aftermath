@@ -180,6 +180,8 @@
 #include "server/zone/objects/creature/commands/InspacereloadCommand.h"
 #include "server/zone/objects/creature/commands/InspacerrCommand.h"
 #include "server/zone/objects/creature/commands/RequestSpaceTrainerCommand.h"
+#include "server/zone/objects/creature/commands/GmForceFrsCommand.h"
+#include "server/zone/objects/creature/commands/PackupStructureCommand.h"
 
 
 using namespace server::zone::managers::objectcontroller::command;
@@ -325,4 +327,6 @@ void CommandConfigManager::registerCommands4() {
 	commandFactory.registerCommand<InspacereloadCommand>(String("inspacereload").toLowerCase());
 	commandFactory.registerCommand<InspacerrCommand>(String("inspacerr").toLowerCase());
 	commandFactory.registerCommand<RequestSpaceTrainerCommand>(String("requestSpaceTrainer").toLowerCase());
+	commandFactory.registerCommand<GmForceFrsCommand>(String("gmForceFrsCommand").toLowerCase());
+	commandFactory.registerCommand<PackupStructureCommand>(String("packupstructure").toLowerCase());
 }

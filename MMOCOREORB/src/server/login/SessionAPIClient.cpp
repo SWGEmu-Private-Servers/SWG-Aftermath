@@ -10,8 +10,6 @@
 
 #ifdef WITH_SESSION_API
 
-#define SESSION_API_CLIENT_VERSION 1002
-
 #include "SessionAPIClient.h"
 
 #include <cpprest/filestream.h>
@@ -28,9 +26,7 @@ SessionAPIClient::SessionAPIClient() {
 
 	// Separate log file to avoid spamming the console
 	setLoggingName("SessionAPIClient");
-	setFileLogger("log/session_api.log", true, ConfigManager::instance()->getRotateLogAtStart());
-	setLogSynchronized(true);
-	setRotateLogSizeMB(ConfigManager::instance()->getInt("Core3.Login.API.RotateLogSizeMB", ConfigManager::instance()->getRotateLogSizeMB()));
+	setFileLogger("log/session_api.log", true);
 	setLogToConsole(false);
 	setGlobalLogging(false);
 	setLogging(true);
@@ -273,7 +269,7 @@ void SessionAPIClient::notifyGalaxyStart(uint32 galaxyID) {
 	// Save for later
 	this->galaxyID = galaxyID;
 
-	path << "/v1/core3/galaxy/" << galaxyID << "/start?client_version=" << SESSION_API_CLIENT_VERSION;
+	path << "/v1/core3/galaxy/" << galaxyID << "/start";
 
 	apiNotify(__FUNCTION__, path.toString());
 }
@@ -281,7 +277,7 @@ void SessionAPIClient::notifyGalaxyStart(uint32 galaxyID) {
 void SessionAPIClient::notifyGalaxyShutdown() {
 	StringBuffer path;
 
-	path << "/v1/core3/galaxy/" << galaxyID << "/shutdown?client_version=" << SESSION_API_CLIENT_VERSION;
+	path << "/v1/core3/galaxy/" << galaxyID << "/shutdown";
 
 	apiNotify(__FUNCTION__, path.toString());
 }

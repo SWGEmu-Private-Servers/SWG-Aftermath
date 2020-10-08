@@ -93,13 +93,8 @@ int AuctionsMapImplementation::addBazaarItem(CreatureObject* player, const Strin
 	return ItemSoldMessage::SUCCESS;
 }
 
-void AuctionsMapImplementation::deleteItem(SceneObject* vendor, AuctionItem* item, bool deleteAuctionedObject) {
-	Locker locker(_this.getReferenceUnsafeStaticCast());
-	removeItem(vendor, item);
-	item->destroyAuctionItemFromDatabase(false, deleteAuctionedObject);
-}
+void AuctionsMapImplementation::deleteItem(SceneObject* vendor, AuctionItem* item) {
 
-void AuctionsMapImplementation::removeItem(SceneObject* vendor, AuctionItem* item) {
 	Locker locker(_this.getReferenceUnsafeStaticCast());
 
 	if(vendor != nullptr) {
@@ -110,6 +105,7 @@ void AuctionsMapImplementation::removeItem(SceneObject* vendor, AuctionItem* ite
 	}
 
 	allItems.drop(item->getAuctionedItemObjectID());
+	ObjectManager::instance()->destroyObjectFromDatabase(item->_getObjectID());
 }
 
 void AuctionsMapImplementation::removeVendorItem(SceneObject* vendor, AuctionItem* item) {
@@ -224,11 +220,23 @@ void AuctionsMapImplementation::deleteTerminalItems(SceneObject* vendor) {
 		ReadLocker rlocker(vendorItems);
 
 		for(int i = 0; i < vendorItems->size(); ++i) {
-			Reference<AuctionItem*> item = vendorItems->get(i);
+			ManagedReference<AuctionItem*> item = vendorItems->get(i);
 
 			if(item != nullptr) {
-				allItems.drop(item->getAuctionedItemObjectID());
-				item->destroyAuctionItemFromDatabase(false, true);
+				uint64 oid = item->getAuctionedItemObjectID();
+
+				allItems.drop(oid);
+				ObjectManager::instance()->destroyObjectFromDatabase(item->_getObjectID());
+
+				Core::getTaskManager()->executeTask([zserv, oid] () {
+					ManagedReference<SceneObject*> sceno = zserv->getObject(oid);
+
+					if (sceno != nullptr) {
+						Locker locker(sceno);
+
+						sceno->destroyObjectFromDatabase(true);
+					}
+				}, "DeleteTerminalItemLambda", "slowQueue");
 			}
 		}
 	}

@@ -144,7 +144,7 @@ public:
 		StringBuffer fullName;
 		fullName << firstName;
 
-		if(!surName.isEmpty())
+		if (!surName.isEmpty())
 			fullName << " " << surName;
 
 		return fullName.toString();

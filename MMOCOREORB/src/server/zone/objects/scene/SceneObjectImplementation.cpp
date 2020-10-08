@@ -80,10 +80,6 @@ void SceneObjectImplementation::initializeTransientMembers() {
 	setLogging(false);
 
 	setLoggingName("SceneObject");
-
-	if (originalObjectID == 0) {
-		originalObjectID = getObjectID();
-	}
 }
 
 void SceneObjectImplementation::initializePrivateData() {
@@ -135,10 +131,6 @@ void SceneObjectImplementation::initializePrivateData() {
 	childObjects.setNoDuplicateInsertPlan();
 
 	collidableObject = false;
-
-	originalObjectID = 0;
-
-	forceNoTrade = false;
 }
 
 void SceneObjectImplementation::loadTemplateData(SharedObjectTemplate* templateData) {
@@ -511,9 +503,6 @@ void SceneObjectImplementation::sendAttributeListTo(CreatureObject* object) {
 	AttributeListMessage* alm = new AttributeListMessage(asSceneObject());
 
 	try {
-        	if (attributeListComponent == nullptr) {
-			throw Exception("nullptr attribute list component");
-		}
 
 		attributeListComponent->fillAttributeList(alm, object, asSceneObject());
 
@@ -1180,6 +1169,16 @@ void SceneObjectImplementation::setDirection(const Quaternion& dir) {
 
 void SceneObjectImplementation::rotate(int degrees) {
 	Vector3 unity(0, 1, 0);
+	direction.rotate(unity, degrees);
+}
+
+void SceneObjectImplementation::rotateXaxis(int degrees) {
+    Vector3 unity(1, 0, 0);
+	direction.rotate(unity, degrees);
+}
+
+void SceneObjectImplementation::rotateYaxis(int degrees) {
+	Vector3 unity(0, 0, 1);
 	direction.rotate(unity, degrees);
 }
 
@@ -1926,7 +1925,7 @@ int SceneObjectImplementation::compareTo(SceneObject* obj) {
 	return asSceneObject()->compareTo(obj);
 }
 
-int SceneObjectImplementation::writeRecursiveJSON(JSONSerializationType& j, int maxDepth, bool pruneCreo, bool pruneCraftedComponents, Vector<uint64>* oidPath) {
+int SceneObjectImplementation::writeRecursiveJSON(JSONSerializationType& j, int maxDepth, Vector<uint64>* oidPath) {
 	if (maxDepth <= 0)
 		return 0;
 
@@ -1935,23 +1934,15 @@ int SceneObjectImplementation::writeRecursiveJSON(JSONSerializationType& j, int 
 
 	int count = 0;
 
-	Locker lock(asSceneObject());
-
 	JSONSerializationType thisObject;
 	writeJSON(thisObject);
 	thisObject["_maxDepth"] = maxDepth;
 	thisObject["_depth"] = oidPath->size();
 	thisObject["_oid"] = getObjectID();
-	thisObject["_className"] = _className;
-
-	oidPath->add(getObjectID());
-
-	auto childObjects = *getChildObjects(); // Get a copy before we release the lock
-	auto craftingComponents = getSlottedObject("crafted_components");
-
-	lock.release();
 
 	auto oidPathJSON = JSONSerializationType::array();
+
+	oidPath->add(getObjectID());
 
 	for (int i = 0;i < oidPath->size();i++) {
 		oidPathJSON.push_back(oidPath->get(i));
@@ -1963,23 +1954,25 @@ int SceneObjectImplementation::writeRecursiveJSON(JSONSerializationType& j, int 
 
 	count++;
 
-	if (pruneCreo && isCreatureObject()) {
-		return count;
-	}
-
 	for (int i = 0; i < getContainerObjectsSize(); ++i) {
 		auto obj = getContainerObject(i);
 
 		if (obj != nullptr) {
-			count += obj->writeRecursiveJSON(j, maxDepth - 1, pruneCreo, pruneCraftedComponents, oidPath);
+			ReadLocker locker(obj);
+
+			count += obj->writeRecursiveJSON(j, maxDepth - 1, oidPath);
 		}
 	}
 
-	for (int i = 0;i < childObjects.size(); ++i) {
-		auto obj = childObjects.get(i);
+	auto childObjects = getChildObjects();
+
+	for (int i = 0;i < childObjects->size(); ++i) {
+		auto obj = childObjects->get(i);
 
 		if (obj != nullptr) {
-			count += obj->writeRecursiveJSON(j, maxDepth - 1, pruneCreo, pruneCraftedComponents, oidPath);
+			ReadLocker locker(obj);
+
+			count += obj->writeRecursiveJSON(j, maxDepth - 1, oidPath);
 		}
 	}
 
@@ -1987,11 +1980,9 @@ int SceneObjectImplementation::writeRecursiveJSON(JSONSerializationType& j, int 
 		auto obj =  getSlottedObject(i);
 
 		if (obj != nullptr) {
-			if (pruneCraftedComponents && obj == craftingComponents) {
-				continue;
-			}
+			ReadLocker locker(obj);
 
-			count += obj->writeRecursiveJSON(j, maxDepth - 1, pruneCreo, pruneCraftedComponents, oidPath);
+			count += obj->writeRecursiveJSON(j, maxDepth - 1, oidPath);
 		}
 	}
 
@@ -2004,8 +1995,7 @@ int SceneObjectImplementation::writeRecursiveJSON(JSONSerializationType& j, int 
 	return count;
 }
 
-String SceneObjectImplementation::exportJSON(const String& exportNote, int maxDepth, bool pruneCreo, bool pruneCraftedComponents) {
-	Time startTime;
+String SceneObjectImplementation::exportJSON(const String& exportNote, int maxDepth) {
 	uint64 oid = getObjectID();
 
 	// Collect object and all children to maxDepth
@@ -2017,28 +2007,20 @@ String SceneObjectImplementation::exportJSON(const String& exportNote, int maxDe
 	int count = 0;
 
 	try {
-		count = writeRecursiveJSON(exportedObjects, maxDepth, pruneCreo, pruneCraftedComponents);
+		count = writeRecursiveJSON(exportedObjects, maxDepth);
 	} catch (Exception& e) {
 		error() << "SceneObjectImplementation::writeRecursiveJSON(): failed:" << e.getMessage();
 	}
 
 	// Metadata
+	Time now;
 	nlohmann::json metaData = nlohmann::json::object();
-	metaData["exportTime"] = startTime.getFormattedTimeFull();
+	metaData["exportTime"] = now.getFormattedTimeFull();
 	metaData["exportNote"] = exportNote;
 	metaData["rootObjectID"] = oid;
 	metaData["rootObjectClassName"] = _className;
 	metaData["objectCount"] = count;
 	metaData["maxDepth"] = maxDepth;
-	metaData["msExport"] = startTime.miliDifference();
-
-	if (pruneCreo) {
-		metaData["pruneCreatures"] = true;
-	}
-
-	if (pruneCraftedComponents) {
-		metaData["pruneCraftedComponents"] = true;
-	}
 
 	// Root object is meta "exportObject"
 	nlohmann::json exportObject;
@@ -2050,21 +2032,15 @@ String SceneObjectImplementation::exportJSON(const String& exportNote, int maxDe
 
 	// Spread the files out across directories
 	fileNameBuf << "exports";
-	if (!File::doMkdir(fileNameBuf.toString().toCharArray(), 0770)) {
-		warning() << "could not create " << fileNameBuf << " directory";
-	}
+	mkdir(fileNameBuf.toString().toCharArray(), 0770);
 
-	fileNameBuf << File::directorySeparator() << String::hexvalueOf((int64)((oid & 0xFFFF000000000000) >> 48));
-	if (!File::doMkdir(fileNameBuf.toString().toCharArray(), 0770)) {
-		warning() << "could not create " << fileNameBuf << " directory";
-	}
+	fileNameBuf << "/" << String::hexvalueOf((int64)((oid & 0xFFFF000000000000) >> 48));
+	mkdir(fileNameBuf.toString().toCharArray(), 0770);
 
-	fileNameBuf << File::directorySeparator() << String::hexvalueOf((int64)((oid & 0x0000FFFFFF000000) >> 24));
-	if (!File::doMkdir(fileNameBuf.toString().toCharArray(), 0770)) {
-		warning() << "could not create " << fileNameBuf << " directory";
-	}
+	fileNameBuf << "/" << String::hexvalueOf((int64)((oid & 0x0000FFFFFF000000) >> 24));
+	mkdir(fileNameBuf.toString().toCharArray(), 0770);
 
-	fileNameBuf << File::directorySeparator() << oid << "-" << startTime.getMiliTime() << ".json";
+	fileNameBuf << "/" << String::valueOf(oid) << "-" << now.getMiliTime() << ".json";
 
 	String fileName = fileNameBuf.toString();
 
@@ -2073,51 +2049,4 @@ String SceneObjectImplementation::exportJSON(const String& exportNote, int maxDe
 	jsonFile.close();
 
 	return fileName;
-}
-
-void SceneObjectImplementation::getChildrenRecursive(SortedVector<uint64>& childObjectsFound, int maxDepth, bool pruneCreo, bool pruneCraftedComponents) {
-	if (maxDepth <= 0)
-		return;
-
-	Locker lock(asSceneObject());
-
-	if (pruneCreo && isCreatureObject()) {
-		return;
-	}
-
-	auto childObjects = *getChildObjects(); // Get a copy before we release the lock
-	auto craftingComponents = getSlottedObject("crafted_components");
-
-	lock.release();
-
-	for (int i = 0; i < getContainerObjectsSize(); ++i) {
-		auto obj = getContainerObject(i);
-
-		if (obj != nullptr) {
-			childObjectsFound.put(obj->getObjectID());
-			obj->getChildrenRecursive(childObjectsFound, maxDepth - 1, pruneCreo, pruneCraftedComponents);
-		}
-	}
-
-	for (int i = 0;i < childObjects.size(); ++i) {
-		auto obj = childObjects.get(i);
-
-		if (obj != nullptr) {
-			childObjectsFound.put(obj->getObjectID());
-			obj->getChildrenRecursive(childObjectsFound, maxDepth - 1, pruneCreo, pruneCraftedComponents);
-		}
-	}
-
-	for (int i = 0;i < getSlottedObjectsSize(); ++i) {
-		auto obj =  getSlottedObject(i);
-
-		if (obj != nullptr) {
-			if (pruneCraftedComponents && obj == craftingComponents) {
-				continue;
-			}
-
-			childObjectsFound.put(obj->getObjectID());
-			obj->getChildrenRecursive(childObjectsFound, maxDepth - 1, pruneCreo, pruneCraftedComponents);
-		}
-	}
 }

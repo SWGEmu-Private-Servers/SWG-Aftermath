@@ -8,7 +8,7 @@
 #include "server/db/ServerDatabase.h"
 #include "conf/ConfigManager.h"
 
-// #define USE_RANDOM_EXTRA_PORTS
+		// #define USE_RANDOM_EXTRA_PORTS
 
 class Galaxy {
 	uint32 id = 0;
@@ -23,7 +23,7 @@ class Galaxy {
 public:
 	Galaxy() = default;
 
-	Galaxy(ResultSet *result) {
+	Galaxy(ResultSet* result) {
 		id = result->getUnsignedInt(0);
 		name = result->getString(1);
 		address = result->getString(2);
@@ -46,12 +46,14 @@ public:
 
 						if (newPort != 0)
 							extraPorts.add(newPort);
-					} catch (Exception e) {
+					}
+					catch (Exception e) {
 						// Do nothing
 					}
 				}
 			}
-		} catch (Exception e) {
+		}
+		catch (Exception e) {
 			// Do Nothing
 		}
 #endif // USE_RANDOM_EXTRA_PORTS
@@ -83,15 +85,7 @@ public:
 
 	uint16 getRandomPort() const {
 #ifdef USE_RANDOM_EXTRA_PORTS
-		const static auto type = ConfigManager::instance()->getInt("Core3.ZonePortsBalancer", 1);
-
-		if (type == 1) {
-			static AtomicInteger roundRobin;
-
-			return (uint16)extraPorts.get(roundRobin.increment() % extraPorts.size());
-		} else {
-			return (uint16)extraPorts.get(System::random(extraPorts.size() - 1));
-		}
+		return (uint16)extraPorts.get(System::random(extraPorts.size() - 1));
 #else // USE_RANDOM_EXTRA_PORTS
 		return port;
 #endif // USE_RANDOM_EXTRA_PORTS
@@ -115,7 +109,7 @@ public:
 			<< ", port: " << port
 			<< ", pingPort: " << pingPort
 			<< ", population: " << population
-		;
+			;
 #ifdef USE_RANDOM_EXTRA_PORTS
 
 		buf << ", extraPorts:";
@@ -151,7 +145,8 @@ public:
 
 			try {
 				galaxyAccessList = ConfigManager::instance()->getStringVector("Core3.GalaxyAccess." + galaxy.getName());
-			} catch (Exception& e) {
+			}
+			catch (Exception & e) {
 				// Do nothing on error (key miss)
 			}
 
@@ -160,7 +155,8 @@ public:
 					if (access_username == username)
 						galaxies.add(galaxy);
 				}
-			} else
+			}
+			else
 				galaxies.add(galaxy);
 		}
 

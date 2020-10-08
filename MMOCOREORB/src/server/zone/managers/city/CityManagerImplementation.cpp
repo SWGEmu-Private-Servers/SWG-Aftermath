@@ -37,7 +37,6 @@
 #include "TaxPayMailTask.h"
 #include "templates/tangible/SharedStructureObjectTemplate.h"
 #include "server/zone/objects/player/sui/callbacks/RenameCitySuiCallback.h"
-#include "server/zone/objects/transaction/TransactionLog.h"
 
 #ifndef CITY_DEBUG
 #define CITY_DEBUG
@@ -572,12 +571,8 @@ void CityManagerImplementation::withdrawFromCityTreasury(CityRegion* city, Creat
 		return;
 	}
 
-	{
-		TransactionLog trx(TrxCode::CITYTREASURY, mayor, value, false);
-		trx.addState("treasury", city->getCityTreasury());
-		mayor->addBankCredits(value, true);
-		city->subtractFromCityTreasury(value);
-	}
+	mayor->addBankCredits(value, true);
+	city->subtractFromCityTreasury(value);
 
 	mayor->addCooldown("city_withdrawal", CityManagerImplementation::treasuryWithdrawalCooldown);
 
@@ -631,12 +626,8 @@ void CityManagerImplementation::depositToCityTreasury(CityRegion* city, Creature
 		return;
 	}
 
-	{
-		TransactionLog trx(creature, TrxCode::CITYTREASURY, total, true);
-		trx.addState("treasury", city->getCityTreasury());
-		creature->subtractCashCredits(total);
-		city->addToCityTreasury(total);
-	}
+	city->addToCityTreasury(total);
+	creature->subtractCashCredits(total);
 
 	StringIdChatParameter params("city/city", "deposit_treasury"); //You deposit %DI credits into the treasury.
 	params.setDI(total);
@@ -1147,8 +1138,8 @@ void CityManagerImplementation::updateCityVoting(CityRegion* city, bool override
 
 			Reference<PlayerObject*> ghost = mayorObject->getSlottedObject("ghost").castTo<PlayerObject*>();
 
-			if (ghost != nullptr) {
-				ghost->addExperience("political", votes * 300, true);
+			if (ghost != NULL) {
+				ghost->addExperience("political", votes * 1200, true);
 			}
 
 			if (votes > topVotes || (votes == topVotes && candidateID == incumbentID)) {
@@ -1624,6 +1615,10 @@ void CityManagerImplementation::sendCityAdvancement(CityRegion* city, CreatureOb
 	StringIdChatParameter params("city/city", "city_update_eta"); // Next City Update: %TO
 	params.setTO(getNextUpdateTimeString(city));
 	creature->sendSystemMessage(params);
+	String nextVote = getNextVoteTimeString(city);
+	StringBuffer voteBuffer;
+	voteBuffer << "Next City Vote: " << nextVote;
+	creature->sendSystemMessage(voteBuffer.toString());
 }
 
 String CityManagerImplementation::getNextUpdateTimeString(CityRegion* city) {
@@ -1687,6 +1682,69 @@ String CityManagerImplementation::getNextUpdateTimeString(CityRegion* city) {
 
 	return updateStr;
 }
+
+String CityManagerImplementation::getNextVoteTimeString(CityRegion* city) {
+	if (city == NULL)
+		return "";
+
+	int seconds = city->getTimeToVote();
+
+	int days = floor(seconds / 86400);
+	seconds -= days * 86400;
+
+	int hours = floor(seconds / 3600);
+	seconds -= hours * 3600;
+
+	int minutes = floor(seconds / 60);
+	seconds -= minutes * 60;
+
+	StringBuffer buffer;
+
+	if (days > 0) {
+		buffer << days << " day";
+
+		if (days > 1)
+			buffer << "s";
+
+		if (hours > 0 || minutes > 0 || seconds > 0)
+			buffer << ", ";
+	}
+
+	if (hours > 0) {
+		buffer << hours << " hour";
+
+		if (hours > 1)
+			buffer << "s";
+
+		if (minutes > 0 || seconds > 0)
+			buffer << ", ";
+	}
+
+	if (minutes > 0) {
+		buffer << minutes << " minute";
+
+		if (minutes > 1)
+			buffer << "s";
+
+		if (seconds > 0)
+			buffer << ", ";
+	}
+
+	if (seconds > 0) {
+		buffer << seconds << " second";
+
+		if (seconds > 1)
+			buffer << "s";
+	}
+
+	String updateStr = buffer.toString();
+
+	if (updateStr.isEmpty())
+		updateStr = "Now";
+
+	return updateStr;
+}
+
 
 void CityManagerImplementation::promptRegisterCity(CityRegion* city, CreatureObject* creature, SceneObject* terminal) {
 	PlayerObject* ghost = creature->getPlayerObject();

@@ -145,6 +145,40 @@ public:
 			creature->doAnimation("heal_other");
 	}
 
+	void checkJediTarget(CreatureObject* creature, CreatureObject* creatureTarget) const {
+		if (creature->isPlayerCreature()) {
+			CreatureObject* player = cast<CreatureObject*>(creature);
+			CreatureObject* target = cast<CreatureObject*>(creatureTarget);
+
+			ManagedReference<PlayerObject*> ghost = target->getPlayerObject();
+			PlayerObject* playerGhost = player->getPlayerObject();
+
+			if ((target->getWeapon() != NULL && target->getWeapon()->isJediWeapon()) || target->hasSkill("force_title_jedi_rank_02")) {
+				ghost->updateLastJediAttackableTimestamp();
+				playerGhost->updateLastJediPvpCombatActionTimestamp();
+				// Jedi XP Loss
+				int jediXpCap = ghost->getXpCap("jedi_general");
+				int xpLoss = (int)(jediXpCap * -0.08);
+				int curExp = ghost->getExperience("jedi_general");
+
+				int negXpCap = -10000000; // Cap on negative jedi experience
+
+				if ((curExp + xpLoss) < negXpCap)
+					xpLoss = negXpCap - curExp;
+
+				if (xpLoss < -2000000)
+					xpLoss = -2000000;
+				PlayerManager* playerManager = server->getZoneServer()->getPlayerManager();
+				playerManager->awardExperience(target, "jedi_general", xpLoss, true);
+
+				StringIdChatParameter message("base_player","prose_revoke_xp");
+				message.setDI(xpLoss * -1);
+				message.setTO("exp_n", "jedi_general");
+				target->sendSystemMessage(message);
+			}
+		}
+	}
+
 	int doQueueCommand(CreatureObject* creature, const uint64& target, const UnicodeString& arguments) const {
 
 		int result = doCommonMedicalCommandChecks(creature);
@@ -237,6 +271,8 @@ public:
 		doAnimations(creature, creatureTarget);
 
 		checkForTef(creature, creatureTarget);
+
+		checkJediTarget(creature, creatureTarget);
 
 		applyDebuff(creatureTarget);
 

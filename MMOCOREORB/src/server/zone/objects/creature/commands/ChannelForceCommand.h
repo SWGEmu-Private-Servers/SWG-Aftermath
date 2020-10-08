@@ -33,11 +33,22 @@ public:
 
 		// Bonus is in between 250-350.
 		int forceRandom = System::random(100);
-		int forceBonus = 250 + (forceRandom);
 
 		ManagedReference<PlayerObject*> playerObject = creature->getPlayerObject();
 		if (playerObject == nullptr)
 			return GENERALERROR;
+
+		// Bonus is in between 200-300.
+		int forceEnh = 0;
+		if(playerObject->getJediState() == 4) {
+			forceEnh = creature->getSkillMod("force_enhancement_light");
+		} else if (playerObject->getJediState() == 8) {
+			forceEnh = creature->getSkillMod("force_enhancement_dark");
+		}
+		int rand = System::random(10 + forceEnh);
+		int forceBonus = 200 + (rand * 10); // Needs to be divisible by amount of ticks.
+
+		
 
 		// Do not execute if the player's force bar is full.
 		if (playerObject->getForcePower() >= playerObject->getForcePowerMax())

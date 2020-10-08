@@ -1441,7 +1441,8 @@ void GuildManagerImplementation::sponsorPlayer(CreatureObject* player, const Str
 
 	Locker _lock(target, player);
 
-	if (!target->isOnline() || !player->isInRange(target, 32)) {
+	//if (!target->isOnline() || !player->isInRange(target, 32)) {
+	if (!target->isOnline()) {
 		player->sendSystemMessage("@guild:sponsor_not_found"); // The specified person to sponsor could not be found nearby.
 		return;
 	}
@@ -1472,7 +1473,9 @@ void GuildManagerImplementation::sponsorPlayer(CreatureObject* player, const Str
 
 	suiBox->setPromptText(text.toString());
 	suiBox->setUsingObject(player);
-	suiBox->setForceCloseDistance(32);
+	//suiBox->setForceCloseDistance(32);
+	suiBox->setForceCloseDisabled();
+	
 	suiBox->setCancelButton(true, "@no");
 	suiBox->setOkButton(true, "@yes");
 
@@ -2310,17 +2313,4 @@ void GuildManagerImplementation::viewElectionStandings(GuildObject* guild, Creat
 
 	player->getPlayerObject()->addSuiBox(listbox);
 	player->sendMessage(listbox->generateMessage());
-}
-
-void GuildManagerImplementation::iterateGuilds(const GuildObjectIterator& iterator) {
-	Locker _lock(_this.getReferenceUnsafeStaticCast());
-
-	for (int i = 0; i < guildList.size(); ++i) {
-		Reference<GuildObject*> guild = guildList.getValueAt(i);
-
-		if (guild != nullptr) {
-			Locker locker(guild);
-			iterator(guild);
-		}
-	}
 }

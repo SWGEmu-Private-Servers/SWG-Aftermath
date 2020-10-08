@@ -39,7 +39,8 @@ void CommandQueueEnqueueCallback::run() {
 		player->clearQueueAction(actionCount);
 
 		player->debug() << "command spam detected";
-	} else {
+	}
+	else {
 		ObjectController* objectController = server->getObjectController();
 
 		if (objectController) {
@@ -57,14 +58,15 @@ void CommandQueueEnqueueCallback::run() {
 			commandCooldown->updateToCurrentTime();
 		}
 
-		player->enqueueCommand(actionCRC, actionCount, targetID, arguments, -1, actionCount&0x3FFFFFFF);
+		player->enqueueCommand(actionCRC, actionCount, targetID, arguments, -1, actionCount & 0x3FFFFFFF);
 	}
 }
 
 const char* CommandQueueEnqueueCallback::getTaskName() {
 	if (actionName) {
 		return actionName;
-	} else {
+	}
+	else {
 		return Task::getTaskName();
 	}
 }

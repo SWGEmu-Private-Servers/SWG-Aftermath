@@ -286,6 +286,10 @@ public:
 		return &skillsRequired;
 	}
 
+	inline const Vector<String>* getSkillsPrecluded() const {
+		return &preclusionSkills;
+	}
+
 	inline bool isRequiredSkillOf(Skill* skill) const {
 		return skillsRequired.contains(skill->getSkillName());
 	}
@@ -311,7 +315,7 @@ public:
 	 * @return the credits required for training the skill at a trainer.
 	 */
 	inline int getMoneyRequired() const {
-		return moneyRequired;
+		return moneyRequired/2;
 	}
 
 	/**

@@ -14,7 +14,6 @@
 #include "server/zone/objects/intangible/ControlDevice.h"
 #include "server/zone/objects/intangible/PetControlDevice.h"
 #include "server/zone/objects/player/LuaPlayerObject.h"
-#include "server/zone/objects/creature/CreatureObject.h"
 #include "server/zone/objects/tangible/LuaTangibleObject.h"
 #include "server/zone/objects/region/LuaCityRegion.h"
 #include "server/zone/packets/cell/UpdateCellPermissionsMessage.h"
@@ -318,20 +317,10 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->init();
 	luaEngine->setLoggingName("DirectorManagerLuaInstance");
 	luaEngine->setGlobalLogging(true);
+	luaEngine->setLogging(true);
 
-	if (DEBUG_MODE) {
-		luaEngine->setLogLevel(Logger::DEBUG);
-	} else {
-		luaEngine->setLogLevel(Logger::INFO);
-	}
-
-	luaEngine->setFileLogger("log/lua.log", true, ConfigManager::instance()->getRotateLogAtStart());
+	luaEngine->setFileLogger("log/lua.log", true);
 	luaEngine->setLogJSON(ConfigManager::instance()->getLuaLogJSON());
-	luaEngine->setRotateLogSizeMB(ConfigManager::instance()->getRotateLogSizeMB());
-
-	if (luaEngine->getLogJSON()) {
-		luaEngine->setLogSynchronized(true);
-	}
 
 	setupLuaPackagePath(luaEngine);
 
@@ -704,13 +693,7 @@ int DirectorManager::createLoot(lua_State* L) {
 		return 0;
 
 	LootManager* lootManager = ServerCore::getZoneServer()->getLootManager();
-	TransactionLog trx(TrxCode::LUASCRIPT, container);
-	trx.addContextFromLua(L);
-	if (lootManager->createLoot(trx,container, lootGroup, level, maxCondition)) {
-		trx.commit(true);
-	} else {
-		trx.abort() << __FUNCTION__ << " failed: lootGroup=" << lootGroup << "; level=" << level << "; maxCondition=" << maxCondition;
-	}
+	lootManager->createLoot(container, lootGroup, level, maxCondition);
 
 	return 0;
 }
@@ -733,13 +716,7 @@ int DirectorManager::createLootSet(lua_State* L) {
 		return 0;
 
 	LootManager* lootManager = ServerCore::getZoneServer()->getLootManager();
-	TransactionLog trx(TrxCode::LUASCRIPT, container);
-	trx.addContextFromLua(L);
-	if (lootManager->createLootSet(trx, container, lootGroup, level, maxCondition, setSize)) {
-		trx.commit(true);
-	} else {
-		trx.abort() << __FUNCTION__ << " failed: lootGroup=" << lootGroup << "; level=" << level << "; maxCondition=" << maxCondition << "; setSize=" << setSize;
-	}
+	lootManager->createLootSet(container, lootGroup, level, maxCondition, setSize);
 
 	return 0;
 }
@@ -768,13 +745,7 @@ int DirectorManager::createLootFromCollection(lua_State* L) {
 	luaObject.pop();
 
 	LootManager* lootManager = ServerCore::getZoneServer()->getLootManager();
-	TransactionLog trx(TrxCode::LUASCRIPT, container);
-	trx.addContextFromLua(L);
-	if (lootManager->createLootFromCollection(trx, container, &lootCollection, level)) {
-		trx.commit(true);
-	} else {
-		trx.abort() << __FUNCTION__ << " failed: level=" << level;
-	}
+	lootManager->createLootFromCollection(container, &lootCollection, level);
 
 	return 0;
 }
@@ -3702,3 +3673,19 @@ int DirectorManager::getBadgeListByType(lua_State* L) {
 
 	return 1;
 }
+
+int DirectorManager::broadcastGalaxy(lua_State* L){
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ChatManager* chatManager = zoneServer->getChatManager();
+
+	/*if (lua_islightuserdata(L, -1)) {
+		StringIdChatParameter* message = (StringIdChatParameter*)lua_touserdata(L, -1);
+		chatManager->broadcastGalaxy(message);
+	} else { */
+		String value = lua_tostring(L, -1);
+		chatManager->broadcastGalaxy(NULL, value);
+
+	//}
+	return 0;
+}
+

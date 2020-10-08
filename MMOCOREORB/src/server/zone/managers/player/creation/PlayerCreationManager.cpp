@@ -5,6 +5,9 @@
 
 #include "server/db/ServerDatabase.h"
 #include "PlayerCreationManager.h"
+#include "ProfessionDefaultsInfo.h"
+#include "RacialCreationData.h"
+#include "HairStyleInfo.h"
 #include "server/zone/managers/player/PlayerManager.h"
 #include "server/login/packets/ErrorMessage.h"
 #include "server/chat/ChatManager.h"
@@ -25,7 +28,6 @@
 #include "templates/customization/CustomizationIdManager.h"
 #include "server/zone/managers/skill/imagedesign/ImageDesignManager.h"
 #include "server/zone/managers/jedi/JediManager.h"
-#include "server/zone/objects/transaction/TransactionLog.h"
 
 PlayerCreationManager::PlayerCreationManager() :
 		Logger("PlayerCreationManager") {
@@ -328,8 +330,8 @@ bool PlayerCreationManager::createCharacter(ClientCreateCharacterCallback* callb
 
 	auto client = callback->getClient();
 
-	if (client->getCharacterCount(zoneServer.get()->getGalaxyID()) >= 10) {
-		ErrorMessage* errMsg = new ErrorMessage("Create Error", "You are limited to 10 characters per galaxy.", 0x0);
+	if (client->getCharacterCount(zoneServer.get()->getGalaxyID()) >= 8) {
+		ErrorMessage* errMsg = new ErrorMessage("Create Error", "You are limited to 8 characters per galaxy.", 0x0);
 		client->sendMessage(errMsg);
 
 		return false;
@@ -410,16 +412,8 @@ bool PlayerCreationManager::createCharacter(ClientCreateCharacterCallback* callb
 	playerCreature->setClient(client);
 
 	// Set starting cash and starting bank
-	playerCreature->clearCashCredits(false);
-	playerCreature->clearBankCredits(false);
-	{
-		TransactionLog trx(TrxCode::CHARACTERCREATION, playerCreature, startingCash, true);
-		playerCreature->addCashCredits(startingCash, false);
-	}
-	{
-		TransactionLog trx(TrxCode::CHARACTERCREATION, playerCreature, startingBank, false);
-		playerCreature->addBankCredits(startingBank, false);
-	}
+	playerCreature->setCashCredits(startingCash, false);
+	playerCreature->setBankCredits(startingBank, false);
 
 	ManagedReference<PlayerObject*> ghost = playerCreature->getPlayerObject();
 
@@ -447,6 +441,10 @@ bool PlayerCreationManager::createCharacter(ClientCreateCharacterCallback* callb
 				&playerTemplate->getStartingSkills(),
 				&playerTemplate->getStartingItems(), true);
 	}
+
+	// Set starting cash and starting bank
+	playerCreature->setCashCredits(startingCash, false);
+	playerCreature->setBankCredits(startingBank, false);
 
 	if (ghost != nullptr) {
 		int accID = client->getAccountID();
@@ -483,8 +481,8 @@ bool PlayerCreationManager::createCharacter(ClientCreateCharacterCallback* callb
 
 							Time timeVal(sec);
 
-							if (timeVal.miliDifference() < 3600000) {
-								ErrorMessage* errMsg = new ErrorMessage("Create Error", "You are only permitted to create one character per hour. Repeat attempts prior to 1 hour elapsing will reset the timer.", 0x0);
+							if (timeVal.miliDifference() < 720000) {
+								ErrorMessage* errMsg = new ErrorMessage("Create Error", "You are only permitted to create one character per 20 mins. Repeat attempts prior to 20 minutes elapsing will reset the timer.", 0x0);
 								client->sendMessage(errMsg);
 
 								playerCreature->destroyPlayerCreatureFromDatabase(true);
@@ -500,8 +498,8 @@ bool PlayerCreationManager::createCharacter(ClientCreateCharacterCallback* callb
 					if (lastCreatedCharacter.containsKey(accID)) {
 						Time lastCreatedTime = lastCreatedCharacter.get(accID);
 
-						if (lastCreatedTime.miliDifference() < 3600000) {
-							ErrorMessage* errMsg = new ErrorMessage("Create Error", "You are only permitted to create one character per hour. Repeat attempts prior to 1 hour elapsing will reset the timer.", 0x0);
+						if (lastCreatedTime.miliDifference() < 720000) {
+							ErrorMessage* errMsg = new ErrorMessage("Create Error", "You are only permitted to create one character per 20 mins. Repeat attempts prior to 20 minutes elapsing will reset the timer.", 0x0);
 							client->sendMessage(errMsg);
 
 							playerCreature->destroyPlayerCreatureFromDatabase(true);
@@ -576,7 +574,11 @@ bool PlayerCreationManager::createCharacter(ClientCreateCharacterCallback* callb
 
 	ManagedReference<SuiMessageBox*> box = new SuiMessageBox(playerCreature, SuiWindowType::NONE);
 	box->setPromptTitle("PLEASE NOTE");
-	box->setPromptText("You are limited to creating one character per hour. Attempting to create another character or deleting your character before the 1 hour timer expires will reset the timer.");
+	box->setPromptText("You are limited to creating one character per 20 minutes. Attempting to create another character or deleting your character before the 20 minute timer expires will reset the timer.");
+	String playerName = playerCreature->getFirstName();
+	StringBuffer zBroadcast;
+	zBroadcast << "\\#00ace6" << playerName << " \\#ffb90f Has Joined Aftermath!";
+	playerCreature->getZoneServer()->getChatManager()->broadcastGalaxy(NULL, zBroadcast.toString());
 
 	ghost->addSuiBox(box);
 	playerCreature->sendMessage(box->generateMessage());

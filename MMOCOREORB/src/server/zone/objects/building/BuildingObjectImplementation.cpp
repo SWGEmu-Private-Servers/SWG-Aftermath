@@ -35,7 +35,6 @@
 
 #include "server/zone/objects/building/components/GCWBaseContainerComponent.h"
 #include "server/zone/objects/building/components/EnclaveContainerComponent.h"
-#include "server/zone/objects/transaction/TransactionLog.h"
 
 void BuildingObjectImplementation::initializeTransientMembers() {
 	StructureObjectImplementation::initializeTransientMembers();
@@ -116,6 +115,18 @@ int BuildingObjectImplementation::getCurrentNumberOfPlayerItems() {
 	}
 
 	return items;
+}
+
+int BuildingObjectImplementation::getCurrentNumberOfPlayerVendors() {
+	int vendors = 0;
+
+	for (int i = 0; i < cells.size(); ++i) {
+		auto& cell = cells.get(i);
+
+		vendors += cell->getCurrentNumberOfPlayerVendors();
+	}
+
+	return vendors;
 }
 
 void BuildingObjectImplementation::createCellObjects() {
@@ -322,23 +333,6 @@ void BuildingObjectImplementation::notifyRemoveFromZone() {
 				}
 			}
 		}
-	}
-
-	for (int i = 0; i < childCreatureObjects.size(); ++i) {
-		ManagedReference<CreatureObject*> child = childCreatureObjects.get(i);
-
-		if (child == nullptr)
-			continue;
-
-		Locker locker(child);
-
-		AiAgent* ai = child->asAiAgent();
-
-		if (ai != nullptr) {
-			ai->setRespawnTimer(0);
-		}
-
-		child->destroyObjectFromWorld(true);
 	}
 
 	childObjects.removeAll();
@@ -797,7 +791,7 @@ void BuildingObjectImplementation::updateCellPermissionsTo(CreatureObject* creat
 void BuildingObjectImplementation::ejectObject(CreatureObject* creature) {
 	PlayerObject* ghost = creature->getPlayerObject();
 
-	if (ghost != nullptr && ghost->hasGodMode())
+	if (ghost != nullptr && ghost->isPrivileged())
 		return;
 
 	Vector3 ejectionPoint = getEjectionPoint();
@@ -919,7 +913,7 @@ uint32 BuildingObjectImplementation::getMaximumNumberOfPlayerItems() {
 
 	auto maxItems = MAXPLAYERITEMS;
 
-	return Math::min(maxItems, lots * 100);
+	return Math::min(maxItems, lots * 250);
 }
 
 int BuildingObjectImplementation::notifyObjectInsertedToChild(SceneObject* object, SceneObject* child, SceneObject* oldParent) {
@@ -1166,22 +1160,16 @@ void BuildingObjectImplementation::payAccessFee(CreatureObject* player) {
 		return;
 	}
 
-	ManagedReference<CreatureObject*> owner = getOwnerCreatureObject();
-
-	TransactionLog trx(player, owner, TrxCode::ACCESSFEE, accessFee, true);
-	trx.setAutoCommit(false);
-
 	player->subtractCashCredits(accessFee);
+
+	ManagedReference<CreatureObject*> owner = getOwnerCreatureObject();
 
 	if (owner != nullptr) {
 		Locker clocker(owner, player);
 		owner->addBankCredits(accessFee, true);
 	} else {
 		error("Unable to pay access fee credits to owner");
-		trx.errorMessage() << "Unable to pay access fee to owner";
 	}
-
-	trx.commit();
 
 	if (paidAccessList.contains(player->getObjectID()))
 		paidAccessList.drop(player->getObjectID());

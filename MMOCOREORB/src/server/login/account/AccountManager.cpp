@@ -26,7 +26,7 @@ ReadWriteLock AccountManager::mutex;
 AccountManager::AccountManager(LoginServer* loginserv) : Logger("AccountManager") {
 	loginServer = loginserv;
 
-	autoRegistration = true;
+	autoRegistration = false;
 	requiredVersion = "";
 	maxOnlineCharacters = 1;
 
@@ -98,7 +98,6 @@ void AccountManager::loginApprovedAccount(LoginClient* client, ManagedReference<
 	String sessionID = Crypto::randomSalt<64>();
 
 	client->debug() << "generated sessionID: " << sessionID;
-
 	Message* lct = new LoginClientToken(account, sessionID);
 	client->sendMessage(lct);
 
@@ -122,7 +121,7 @@ void AccountManager::loginApprovedAccount(LoginClient* client, ManagedReference<
 	try {
 		ServerDatabase::instance()->executeStatement(sessionQuery);
 		ServerDatabase::instance()->executeStatement(logQuery);
-	} catch (const DatabaseException& e) {
+	}catch (const DatabaseException & e) {
 		client->error() << e.getMessage();
 	}
 
@@ -132,6 +131,7 @@ void AccountManager::loginApprovedAccount(LoginClient* client, ManagedReference<
 	Message* eci = new EnumerateCharacterID(account);
 	client->sendMessage(eci);
 }
+
 
 Reference<Account*> AccountManager::validateAccountCredentials(LoginClient* client, const String& username, const String& password) {
 	StringBuffer query;
@@ -146,14 +146,10 @@ Reference<Account*> AccountManager::validateAccountCredentials(LoginClient* clie
 		if (isAutoRegistrationEnabled() && client != nullptr) {
 			account = createAccount(username, password, passwordStored);
 		} else {
-			if (client != nullptr) {
-				client->sendErrorMessage("Login Error",
-					ConfigManager::instance()->getString("Core3.RegistrationMessage",
-						"Automatic registration is currently disabled. "
-						"Please contact the administrators of the server in order to get an authorized account."
-					)
-				);
-			}
+			if (client != nullptr)
+				client->sendErrorMessage("Login Error", "Automatic registration is currently disabled. "
+					"Please click the register button on the launcher to create an account");
+
 
 			return nullptr;
 		}
@@ -182,13 +178,13 @@ Reference<Account*> AccountManager::validateAccountCredentials(LoginClient* clie
 	}
 
 	if (passwordStored != passwordHashed) {
-		if(client != nullptr)
+		if (client != nullptr)
 			client->sendErrorMessage("Wrong Password", "The password you entered was incorrect.");
 
 		return nullptr;
 	}
 	//update hash if unsalted
-	if (account->getSalt() == "")
+	if(account->getSalt() == "")
 		updateHash(username, password);
 
 	//Check if they are banned
@@ -205,6 +201,7 @@ Reference<Account*> AccountManager::validateAccountCredentials(LoginClient* clie
 
 		int minutesBanned = floor((float)totalBan / 60.0f);
 		totalBan -= (minutesBanned * 60);
+
 
 		reason << "Time remaining: ";
 
@@ -311,6 +308,14 @@ Reference<Account*> AccountManager::getAccount(uint32 accountID, bool forceSqlUp
 		accObj->setTimeCreated(result->getUnsignedInt(6));
 		accObj->setAdminLevel(result->getInt(7));
 
+		StringBuffer query1;
+		query1 << "SELECT UNIX_TIMESTAMP(timestamp) FROM account_log WHERE account_id = '" << accountID << "' ORDER BY UNIX_TIMESTAMP(timestamp) DESC LIMIT 1;";
+
+		Reference<ResultSet*> result1 = ServerDatabase::instance()->executeQuery(query1.toString());
+
+		if (result1->next())
+			accObj->setLastLogin(result1->getUnsignedInt(0));
+
 		accObj->updateFromDatabase();
 
 		return accObj;
@@ -373,6 +378,14 @@ Reference<Account*> AccountManager::getAccount(String query, String& passwordSto
 		account->setTimeCreated(result->getUnsignedInt(6));
 		account->setAdminLevel(result->getInt(7));
 
+		StringBuffer query1;
+		query1 << "SELECT UNIX_TIMESTAMP(timestamp) FROM account_log WHERE account_id = '" << accountID << "' ORDER BY UNIX_TIMESTAMP(timestamp) DESC LIMIT 1;";
+
+		Reference<ResultSet*> result1 = ServerDatabase::instance()->executeQuery(query1.toString());
+
+		if (result1->next())
+			account->setLastLogin(result1->getUnsignedInt(0));
+
 		account->updateFromDatabase();
 
 		return account;
@@ -380,6 +393,8 @@ Reference<Account*> AccountManager::getAccount(String query, String& passwordSto
 
 	return nullptr;
 }
+
+
 
 Reference<Account*> AccountManager::getAccount(const String& accountName, bool forceSqlUpdate) {
 	String name = accountName;

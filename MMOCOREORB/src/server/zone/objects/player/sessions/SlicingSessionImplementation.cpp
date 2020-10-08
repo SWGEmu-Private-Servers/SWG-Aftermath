@@ -517,7 +517,7 @@ void SlicingSessionImplementation::handleWeaponSlice() {
 
 	switch (sliceSkill) {
 	case 5:
-		min += 5;
+		min += 10;
 		max += 5;
 	case 4:
 		min += 5;
@@ -625,7 +625,7 @@ void SlicingSessionImplementation::handleArmorSlice() {
 
 	switch (sliceSkill) {
 	case 5:
-		min += (sliceType == 0) ? 6 : 5;
+		min += (sliceType == 0) ? 16 : 15;
 		max += 5;
 	case 4:
 		min += (sliceType == 0) ? 0 : 10;
@@ -661,7 +661,14 @@ void SlicingSessionImplementation::handleSliceEncumbrance(uint8 percent) {
 
 	Locker locker(armor);
 
-	armor->setEncumbranceSlice(percent / 100.f);
+	if ((armor->getMaxCondition() - armor->getConditionDamage()) <= 0) {
+		player->sendSystemMessage("The armor is too badly damaged to slice for condition");
+		return;
+	}
+	int conDmg = armor->getConditionDamage();
+	armor->setMaxCondition(armor->getMaxCondition() + (armor->getMaxCondition() - (percent / 100.f)), true);
+	armor->setConditionDamage(conDmg, true);
+
 	armor->setSliced(true);
 
 	StringIdChatParameter params;
@@ -723,16 +730,11 @@ void SlicingSessionImplementation::handleContainerSlice() {
 			return;
 		}
 
-		TransactionLog trx(TrxCode::SLICECONTAINER, player, container);
-
-		if (System::random(10) != 4) {
-			lootManager->createLoot(trx, container, "looted_container");
-		}
+		if (System::random(10) != 4)
+			lootManager->createLoot(container, "looted_container");
 
 		inventory->transferObject(container, -1);
 		container->sendTo(player, true);
-
-		trx.commit();
 
 		if (inventory->hasObjectInContainer(tangibleObject->getObjectID())) {
 			//inventory->removeObject(tangibleObject, true);

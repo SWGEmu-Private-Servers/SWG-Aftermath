@@ -128,6 +128,8 @@ void LoginPacketHandler::handleDeleteCharacterMessage(LoginClient* client, Messa
 
 				dbDelete = 1;
 			}
+
+
 		} catch (const Exception& e) {
 			error() << e.getMessage();
 			dbDelete = 1;

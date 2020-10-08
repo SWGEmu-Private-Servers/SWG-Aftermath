@@ -15,7 +15,6 @@
 #include "server/zone/packets/object/PlayClientEffectObjectMessage.h"
 #include "server/zone/packets/scene/PlayClientEffectLocMessage.h"
 #include "server/zone/Zone.h"
-#include "server/zone/objects/intangible/PetControlDevice.h"
 
 namespace server {
 namespace zone {
@@ -93,7 +92,7 @@ public:
 			case 3: {
 				// BOOM
 				int areaDamage = module->calculateDamage(droid);
-				bool shouldGcwCrackdownTef = false, shouldGcwTef = false, shouldBhTef = false;
+				bool shouldGcwTef = false, shouldBhTef = false, shouldJediTef = false;
 
 				// find all valid targets in 17 m range and hit them with the damage
 				CloseObjectsVector* vec = (CloseObjectsVector*) droid->getCloseObjects();
@@ -177,7 +176,7 @@ public:
 								tomaster.setDI((int)amount);
 								player->sendSystemMessage(tomaster);
 
-								CombatManager::instance()->checkForTefs(player, creo, &shouldGcwCrackdownTef, &shouldGcwTef, &shouldBhTef);
+								CombatManager::instance()->checkForTefs(player, creo, &shouldGcwTef, &shouldBhTef, &shouldJediTef);
 							}
 
 						}
@@ -204,11 +203,11 @@ public:
 				}
 
 				// Update PvP TEF Duration
-				if (shouldGcwCrackdownTef || shouldGcwTef || shouldBhTef) {
+				if (shouldGcwTef || shouldBhTef || shouldJediTef) {
 					PlayerObject* ghost = player->getPlayerObject();
 
 					if (ghost != nullptr) {
-						ghost->updateLastCombatActionTimestamp(shouldGcwCrackdownTef, shouldGcwTef, shouldBhTef);
+						ghost->updateLastPvpCombatActionTimestamp(shouldGcwTef, shouldBhTef, shouldJediTef);
 					}
 				}
 

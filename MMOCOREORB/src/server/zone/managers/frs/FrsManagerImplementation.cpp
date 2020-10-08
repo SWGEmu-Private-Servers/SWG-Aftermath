@@ -355,9 +355,9 @@ void FrsManagerImplementation::verifyRoomAccess(CreatureObject* player, int play
 			player->teleport(5079, 0, 305, 0);
 	} else if (playerRank < roomReq) {
 		if (buildingType == COUNCIL_LIGHT)
-			player->teleport(-0.1f, -19.3f, 39.9f, 8525439);
+			player->teleport(-0.1, -19.3, 39.9, 8525439);
 		else
-			player->teleport(0.1f, -43.4f, -32.2f, 3435634);
+			player->teleport(0.1, -43.4, -32.2, 3435634);
 	}
 }
 
@@ -636,7 +636,7 @@ void FrsManagerImplementation::handleSkillRevoked(CreatureObject* player, const 
 		return;
 
 	if (skillName.hashCode() == STRING_HASHCODE("force_title_jedi_rank_03")) {
-		VectorMap<uint32, Reference<FrsRankingData*> > rankingData;
+		VectorMap<uint, Reference<FrsRankingData*> > rankingData;
 
 		if (councilType == COUNCIL_LIGHT)
 			rankingData = lightRankingData;
@@ -672,7 +672,7 @@ void FrsManagerImplementation::handleSkillRevoked(CreatureObject* player, const 
 }
 
 int FrsManagerImplementation::getSkillRank(const String& skillName, int councilType) {
-	VectorMap<uint32, Reference<FrsRankingData*> > rankingData;
+	VectorMap<uint, Reference<FrsRankingData*> > rankingData;
 
 	if (councilType == COUNCIL_LIGHT)
 		rankingData = lightRankingData;
@@ -701,7 +701,7 @@ void FrsManagerImplementation::updatePlayerSkills(CreatureObject* player) {
 	FrsData* playerData = ghost->getFrsData();
 	int playerRank = playerData->getRank();
 	int councilType = playerData->getCouncilType();
-	VectorMap<uint32, Reference<FrsRankingData*> > rankingData;
+	VectorMap<uint, Reference<FrsRankingData*> > rankingData;
 
 	if (councilType == COUNCIL_LIGHT)
 		rankingData = lightRankingData;
@@ -998,7 +998,7 @@ bool FrsManagerImplementation::isValidFrsBattle(CreatureObject* attacker, Creatu
 	return true;
 }
 
-int FrsManagerImplementation::calculatePvpExperienceChange(CreatureObject* attacker, CreatureObject* victim, float contribution, bool isVictim) {
+int FrsManagerImplementation::calculatePvpExperienceChange(CreatureObject* attacker, CreatureObject* victim, float contribution, int groupSize, bool isVictim) {
 	PlayerObject* attackerGhost = attacker->getPlayerObject();
 	PlayerObject* victimGhost = victim->getPlayerObject();
 
@@ -1034,18 +1034,30 @@ int FrsManagerImplementation::calculatePvpExperienceChange(CreatureObject* attac
 	int xpChange = getBaseExperienceGain(playerGhost, opponentGhost, !isVictim);
 
 	if (xpChange != 0) {
-		xpChange = (int)((float)xpChange * contribution);
+		xpChange = (int)((float)xpChange / groupSize);
 
 		// Adjust xp value depending on pvp rating
 		// A lower rated victim will lose less experience, a higher rated victim will lose more experience
 		// A lower rated victor will gain more experience, a higher rated victor will gain less experience
 		if ((targetRating < opponentRating && isVictim) || (targetRating > opponentRating && !isVictim)) {
 			xpChange -= (int)((float)xpChange * xpAdjustment);
+			if (groupSize > 1 && isVictim)
+				xpChange = xpChange / 2;
 		} else {
 			xpChange += (int)((float)xpChange * xpAdjustment);
 		}
 	}
-
+	if (!isVictim){
+		String attackerName = attacker->getFirstName();
+		String victimName = victim->getFirstName();
+		Database::escapeString(victimName);
+		Database::escapeString(attackerName);
+		StringBuffer frsKillQuery, zBroadcast;
+		frsKillQuery << "INSERT INTO frs_kills(killer, xpchange, victim) VALUES ('" << attackerName <<"'," << xpChange << ", '" << victimName << "');";
+		ServerDatabase::instance()->executeStatement(frsKillQuery);
+		//zBroadcast << "\\#00cc99 " << attackerName << "\\#e60000 gained FRS from killing" << "\\#00e604 " << victimName; 
+		//playerGhost->getZoneServer()->getChatManager()->broadcastGalaxy(NULL, zBroadcast.toString());
+	}
 	return xpChange;
 }
 
@@ -1589,7 +1601,7 @@ bool FrsManagerImplementation::isEligibleForPromotion(CreatureObject* player, in
 
 	FrsData* playerData = ghost->getFrsData();
 	int councilType = playerData->getCouncilType();
-	VectorMap<uint32, Reference<FrsRankingData*> > rankingData;
+	VectorMap<uint, Reference<FrsRankingData*> > rankingData;
 
 	if (councilType == COUNCIL_LIGHT)
 		rankingData = lightRankingData;
@@ -1682,7 +1694,7 @@ int FrsManagerImplementation::getAvailableRankSlots(FrsRank* rankData) {
 	short councilType = rankData->getCouncilType();
 	int rank = rankData->getRank();
 
-	VectorMap<uint32, Reference<FrsRankingData*> > rankingData;
+	VectorMap<uint, Reference<FrsRankingData*> > rankingData;
 
 	if (councilType == COUNCIL_LIGHT)
 		rankingData = lightRankingData;
@@ -1764,7 +1776,7 @@ void FrsManagerImplementation::runChallengeVoteUpdate() {
 		int yesVotes = challengeData->getTotalYesVotes();
 		int noVotes = challengeData->getTotalNoVotes();
 
-		bool votePassed = yesVotes >= noVotes * 2;
+		bool votePassed = yesVotes > noVotes * 2;
 
 		if (votePassed) {
 			Core::getTaskManager()->executeTask([strongRef, challengedRank, challenged, yesVotes, noVotes] () {
@@ -3312,8 +3324,8 @@ bool FrsManagerImplementation::handleDarkCouncilDeath(CreatureObject* killer, Cr
 	managerData->removeArenaFighter(challengerID);
 	managerData->removeArenaFighter(accepterID);
 
-	int killerXp = calculatePvpExperienceChange(killer, victim, 1.0f, false);
-	int victimXp = calculatePvpExperienceChange(killer, victim, 1.0f, true);
+	int killerXp = calculatePvpExperienceChange(killer, victim, 1.0f, 1, false);
+	int victimXp = calculatePvpExperienceChange(killer, victim, 1.0f, 1, true);
 
 	ManagedReference<FrsManager*> strongMan = _this.getReferenceUnsafeStaticCast();
 	ManagedReference<CreatureObject*> strongKiller = killer->asCreatureObject();
@@ -3583,7 +3595,7 @@ void FrsManagerImplementation::teleportPlayerToDarkArena(CreatureObject* player)
 	float randX = -12.f + System::random(24);
 	float randY = -85.f + System::random(24);
 
-	player->teleport(randX, -47.424f, randY, ARENA_CELL);
+	player->teleport(randX, -47.424, randY, ARENA_CELL);
 }
 
 void FrsManagerImplementation::sendArenaChallengeSUI(CreatureObject* player, SceneObject* terminal, short suiType, short enclaveType) {

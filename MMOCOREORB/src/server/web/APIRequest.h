@@ -47,11 +47,10 @@ namespace server {
 		bool stringToBool(const String& boolStr) const;
 
 	public:
-		APIRequest(http_request gatewayRequest, const String endpointKey, Logger& logger);
+		APIRequest(http_request gatewayRequest, const String endpointKey, Logger::LogLevel logLevel = Logger::INFO);
 		~APIRequest();
 
 		String toString() const;
-		String toStringData() const;
 
 		inline bool isMethodGET() const {
 			return mGatewayRequest.method() == "GET";

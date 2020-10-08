@@ -10,7 +10,7 @@ import engine.service.proto.BasePacket;
 import engine.util.u3d.Vector3;
 import server.zone.objects.building.BuildingObject;
 import server.zone.objects.creature.CreatureObject;
-include server.zone.objects.creature.ai.AiAgent;
+import server.zone.objects.creature.ai.AiAgent;
 import server.zone.objects.intangible.IntangibleObject;
 import server.zone.objects.player.events.PlayerDisconnectEvent;
 import server.zone.objects.player.events.PlayerRecoveryEvent;
@@ -205,6 +205,8 @@ class PlayerObject extends IntangibleObject {
 
 	protected int pvpRating;
 
+	protected int ratingReset;
+	
 	@dereferenced
 	protected Time lastPvpRatingUpdate; // Timestamp of when last time player received a pvp rating change
 
@@ -212,6 +214,8 @@ class PlayerObject extends IntangibleObject {
 	protected Vector<byte> hologrindProfessions;
 
 	protected unsigned int clientLastMovementStamp;
+
+	protected int jediDays;
 
 	@dereferenced
 	protected Time serverLastMovementStamp;
@@ -243,9 +247,10 @@ class PlayerObject extends IntangibleObject {
 	protected Time lastGcwPvpCombatActionTimestamp;
 
 	@dereferenced
-	protected Time lastCrackdownGcwCombatActionTimestamp;
+	protected Time lastJediPvpCombatActionTimestamp;
 
-	protected unsigned int crackdownFactionTefCrc;
+	@dereferenced
+	protected Time lastJediAttackableTimestamp;
 
 	@dereferenced
 	protected transient Reference<PvpTefRemovalTask> pvpTefTask;
@@ -310,7 +315,7 @@ class PlayerObject extends IntangibleObject {
 	public static final int LOADING = 6;
 
 	public static final int PVP_RATING_FLOOR = 500;
-	public static final unsigned long PVP_RESET_TIME = 259200000; // 3 days
+	public static final unsigned long PVP_RESET_TIME = 300000; // 5 minutes
 
 	public PlayerObject() {
 		playerLogLevel = 4; // INFO
@@ -349,6 +354,8 @@ class PlayerObject extends IntangibleObject {
 
 		pvpRating = 1200;
 
+		ratingReset = 0;
+
 		trainerZoneName = "";
 
 		duelList.setNoDuplicateInsertPlan();
@@ -377,8 +384,8 @@ class PlayerObject extends IntangibleObject {
 
 		lastBhPvpCombatActionTimestamp.updateToCurrentTime();
 		lastGcwPvpCombatActionTimestamp.updateToCurrentTime();
-		lastCrackdownGcwCombatActionTimestamp.updateToCurrentTime();
-		crackdownFactionTefCrc = 0;
+		lastJediPvpCombatActionTimestamp.updateToCurrentTime();
+		lastJediAttackableTimestamp.updateToCurrentTime();
 
 		lastDigestion.updateToCurrentTime();
 
@@ -462,14 +469,14 @@ class PlayerObject extends IntangibleObject {
 	public native void sendMessage(BasePacket msg);
 
 	public synchronized void addOwnedStructure(StructureObject obj) {
-		if (!obj)
+		if (obj == null)
 			return;
 
 		ownedStructures.put(obj.getObjectID());
 	}
 
 	public synchronized void removeOwnedStructure(StructureObject obj) {
-		if (!obj)
+		if (obj == null)
 			return;
 
 		ownedStructures.drop(obj.getObjectID());
@@ -497,7 +504,7 @@ class PlayerObject extends IntangibleObject {
 
 	@dirty
 	public synchronized boolean isOwnedStructure(StructureObject obj) {
-		if (!obj)
+		if (obj == null)
 			return false;
 
 		return ownedStructures.contains(obj.getObjectID());
@@ -892,7 +899,7 @@ class PlayerObject extends IntangibleObject {
 	}
 
 	public void setConversatingCreature(CreatureObject creature) {
-		if (!creature)
+		if (creature == null)
 			conversatingCreature = 0;
 		else
 			conversatingCreature = creature.getObjectID();
@@ -991,14 +998,14 @@ class PlayerObject extends IntangibleObject {
 	}
 
 	public void setDeclaredResidence(BuildingObject residence) {
-		if (!residence)
+		if (residence == null)
 			declaredResidence = 0;
 		else
 			declaredResidence = residence.getObjectID();
 	}
 
 	public void setCloningFacility(BuildingObject cloningfac) {
-		if (!cloningfac)
+		if (cloningfac == null)
 			cloningFacility = 0;
 		else
 			cloningFacility = cloningfac.getObjectID();
@@ -1096,7 +1103,7 @@ class PlayerObject extends IntangibleObject {
 		if (hasSuiBoxWindowType(windowType)) {
 			SuiBox sui = getSuiBoxFromWindowType(windowType);
 
-			if (sui) {
+			if (sui != null) {
 				sendMessage(sui.generateCloseMessage());
 				removeSuiBox(sui.getBoxID());
 			}
@@ -1222,6 +1229,11 @@ class PlayerObject extends IntangibleObject {
 	public void setBadge(unsigned int badge) {
 		badges.setBadge(badge);
 	}
+
+	public void unsetBadge(unsigned int badge) {
+		badges.unsetBadge(badge);
+	}
+
 
 	public native void awardBadge(unsigned int badge);
 
@@ -1670,6 +1682,11 @@ class PlayerObject extends IntangibleObject {
 		return hologrindProfessions;
 	}
 
+	@read
+	public int getJediTime() {
+		return jediDays;
+	}
+		
 	public void setMaximumLots(byte lots) {
 		maximumLots = lots;
 	}
@@ -1733,17 +1750,21 @@ class PlayerObject extends IntangibleObject {
 
 	@dereferenced
 	@local
-	@read
-	public native Time getLastGcwCrackdownCombatActionTimestamp();
+	public native Time getLastJediPvpCombatActionTimestamp();
 
-	public native void updateLastCombatActionTimestamp(boolean updateGcwCrackdownAction, boolean updateGcwAction, boolean updateBhAction);
+	@dereferenced
+	@local
+	public native Time getLastJediAttackableTimestamp();
+	
+	public native void updateLastPvpCombatActionTimestamp(boolean updateGcwAction, boolean updateBhAction, boolean updateJediAction);
 
 	public native void updateLastBhPvpCombatActionTimestamp();
 
 	public native void updateLastGcwPvpCombatActionTimestamp();
 
-	@read
-	public native boolean hasTef();
+	public native void updateLastJediPvpCombatActionTimestamp();
+
+	public native void updateLastJediAttackableTimestamp();
 
 	@read
 	public native boolean hasPvpTef();
@@ -1751,15 +1772,12 @@ class PlayerObject extends IntangibleObject {
 	@read
 	public native boolean hasBhTef();
 
-	public native void setCrackdownTefTowards(unsigned int factionCrc, boolean scheduleTefRemovalTask = true);
-
 	@read
-	public native boolean hasCrackdownTefTowards(unsigned int factionCrc);
+	public native boolean hasJediTef();
 
-	@read
-	public native boolean hasCrackdownTef();
-
-	public native void schedulePvpTefRemovalTask(boolean removeCrackdownGcwTefNow, boolean removeGcwTefNow, boolean removeBhTefNow);
+	public native boolean isJediAttackable();
+	
+	public native void schedulePvpTefRemovalTask(boolean removeGcwTefNow, boolean removeBhTefNow, boolean removeJediTefNow);
 
 	public native void schedulePvpTefRemovalTask(boolean removeNow = false);
 
@@ -1985,6 +2003,14 @@ class PlayerObject extends IntangibleObject {
 	}
 
 	@read
+	public int getRatingReset() {
+		return ratingReset;
+	}
+
+	public void setRatingReset(int reset){
+		ratingReset = reset;
+	}
+	
 	public boolean isCloning() {
 		return isPlayerCloning;
 	}

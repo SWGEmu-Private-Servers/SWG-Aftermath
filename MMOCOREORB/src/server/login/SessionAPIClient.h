@@ -26,8 +26,7 @@ namespace server {
 				ALLOW = 0,
 				WARN = 1,
 				REJECT = 2,
-				BAN = 3,
-				DEBUG = 4
+				BAN = 3
 			};
 
 		private:
@@ -56,13 +55,12 @@ namespace server {
 				case ApprovalAction::WARN:		return String("WARN");
 				case ApprovalAction::REJECT:	return String("REJECT");
 				case ApprovalAction::BAN:		return String("BAN");
-				case ApprovalAction::DEBUG:		return String("DEBUG");
 				}
 
 				return String("UNKOWN(" + String::valueOf((int)action) + ")");
 			}
 
-			void setAction(const String& stringAction) {
+			inline void setAction(const String& stringAction) {
 				if (stringAction == "TEMPFAIL") {
 					resultAction = ApprovalAction::TEMPFAIL;
 					return;
@@ -85,11 +83,6 @@ namespace server {
 
 				if (stringAction == "BAN") {
 					resultAction = ApprovalAction::BAN;
-					return;
-				}
-
-				if (stringAction == "DEBUG") {
-					resultAction = ApprovalAction::DEBUG;
 					return;
 				}
 
@@ -125,7 +118,7 @@ namespace server {
 			}
 
 			inline bool isActionAllowed() const {
-				return resultAction == ApprovalAction::ALLOW || resultAction == ApprovalAction::DEBUG;
+				return resultAction == ApprovalAction::ALLOW;
 			}
 
 			inline bool isActionWarning() const {
@@ -138,10 +131,6 @@ namespace server {
 
 			inline bool isActionBan() const {
 				return resultAction == ApprovalAction::BAN;
-			}
-
-			inline bool isActionDebug() const {
-				return resultAction == ApprovalAction::DEBUG;
 			}
 
 			inline void setTitle(const String& title) {
@@ -257,7 +246,7 @@ namespace server {
 			// Calls in general order of execution
 			void notifyGalaxyStart(uint32 galaxyID);
 			void notifyGalaxyShutdown();
-			void approveNewSession(const String& ip, uint32 accountID, const SessionAPICallback& resultCallback);
+            void approveNewSession(const String& ip, uint32 accountID, const SessionAPICallback& resultCallback);
 			void notifySessionStart(const String& ip, uint32 accountID);
 			void notifyDisconnectClient(const String& ip, uint32 accountID, uint64_t characterID, String eventType);
 			void approvePlayerConnect(const String& ip, uint32 accountID, uint64_t characterID,

@@ -186,6 +186,10 @@ int CityRegionImplementation::getTimeToUpdate() {
 	return round(nextUpdateTime.miliDifference() / -1000.f);
 }
 
+int CityRegionImplementation::getTimeToVote() {
+	return round(nextInauguration.miliDifference() / -1000.f);
+}
+
 void CityRegionImplementation::notifyEnter(SceneObject* object) {
 	if (object->getCityRegion().get() != _this.getReferenceUnsafeStaticCast() && object->isPlayerCreature())
 		currentPlayers.increment();

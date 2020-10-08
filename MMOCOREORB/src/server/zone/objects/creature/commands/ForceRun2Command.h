@@ -9,6 +9,12 @@
 #include "JediQueueCommand.h"
 
 class ForceRun2Command : public JediQueueCommand {
+
+protected:
+	String skillName = "forcerun2";		// Skill Name
+	String skillNameDisplay = "ForceRun 2";		// Skill Display Name for output message
+	int delay = 45; 								//  45 second cool down timer
+
 public:
 
 	ForceRun2Command(const String& name, ZoneProcessServer* server)
@@ -25,16 +31,22 @@ public:
 	}
 
 	int doQueueCommand(CreatureObject* creature, const uint64& target, const UnicodeString& arguments) const {
-		int res = creature->hasBuff(buffCRC) ? NOSTACKJEDIBUFF : doJediSelfBuffCommand(creature);
 
-		if (res == NOSTACKJEDIBUFF) {
-			creature->sendSystemMessage("@jedi_spam:already_force_running"); // You are already force running.
+		if (!creature->checkCooldownRecovery(skillName)) {
+			const Time* timeRemaining = creature->getCooldownTime(skillName);
+			creature->sendSystemMessage("You must wait " +  getCooldownString(timeRemaining->miliDifference() * -1)  + " to use " + skillNameDisplay + " again");
 			return GENERALERROR;
-		}
+        }
+        
+        if (creature->hasBuff(BuffCRC::JEDI_FORCE_RUN_1)) {
+        	creature->removeBuff(BuffCRC::JEDI_FORCE_RUN_1);
+        }
 
-		if (res != SUCCESS) {
-			return res;
-		}
+        int res = doJediSelfBuffCommand(creature);
+
+        if (res != SUCCESS) {
+        	return res;
+        }
 
 		// need to apply the damage reduction in a separate buff so that the multiplication and division applies right
 		Buff* buff = creature->getBuff(BuffCRC::JEDI_FORCE_RUN_2);
@@ -59,8 +71,32 @@ public:
 			creature->removeBuff(STRING_HASHCODE("burstrun"));
 			creature->removeBuff(STRING_HASHCODE("retreat"));
 		}
-
+		creature->updateCooldownTimer(skillName, delay * 1000);
 		return SUCCESS;
+	}
+
+	String getCooldownString(uint32 delta) const {
+
+		int seconds = delta / 1000;
+
+		int hours = seconds / 3600;
+		seconds -= hours * 3600;
+
+		int minutes = seconds / 60;
+		seconds -= minutes * 60;
+
+		StringBuffer buffer;
+
+		if (hours > 0)
+			buffer << hours << "h ";
+
+		if (minutes > 0)
+			buffer << minutes << "m ";
+
+		if (seconds > 0)
+			buffer << seconds << "s";
+
+		return buffer.toString();
 	}
 
 };
